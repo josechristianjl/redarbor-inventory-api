@@ -1,0 +1,47 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local configuration
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Test and coverage artifacts
+TestResults/
+coverage/
+coverage-report/
+*.coverage
+*.coveragexml
+
+# Database files
+*.mdf
+*.ldf
+*.bak
+
+# Local certificates
+*.pfx
+*.key
+*.pem
+
+# Logs
+logs/
+*.log
+
+# Visual Studio generated files
+.vs/
+**/[Bb]in/
+**/[Oo]bj/
+
+# Build and test artifacts
+**/TestResults/
+**/coverage/
+**/coverage-report/
+*.user
+*.suo
+*.cache
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example

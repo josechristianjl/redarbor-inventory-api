@@ -22,4 +22,11 @@
     <ItemGroup>
         <Using Include="Xunit" />
     </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\..\database\scripts\001_create_database.sql" Link="database\scripts\001_create_database.sql" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="..\..\database\scripts\002_create_schema.sql" Link="database\scripts\002_create_schema.sql" CopyToOutputDirectory="PreserveNewest" />
+        <None Update="Persistence\ReadRepositorySeed.sql" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="..\..\database\scripts\003_create_permissions.sql" Link="database\scripts\003_create_permissions.sql" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
 </Project>

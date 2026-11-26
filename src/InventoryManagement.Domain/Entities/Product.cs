@@ -1,4 +1,4 @@
-﻿using InventoryManagement.Domain.Exceptions;
+using InventoryManagement.Domain.Exceptions;
 using InventoryManagement.Domain.Parameters;
 using InventoryManagement.Domain.Validation;
 
@@ -107,5 +107,28 @@ public class Product
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(categoryId);
 
         return categoryId;
+    }
+
+    public static Product Restore(
+    int id,
+    ProductDetails details,
+    int stock,
+    bool isActive)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(id);
+        ArgumentOutOfRangeException.ThrowIfNegative(stock);
+        if (!isActive && stock > 0)
+        {
+            throw new ArgumentException(
+                "An inactive product cannot have available stock.",
+                nameof(stock));
+        }
+
+        return new Product(details)
+        {
+            Id = id,
+            Stock = stock,
+            IsActive = isActive
+        };
     }
 }

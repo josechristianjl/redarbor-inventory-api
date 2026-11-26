@@ -391,6 +391,52 @@ public class ProductTests
         Assert.True(product.IsActive);
     }
 
+    [Theory]
+    [InlineData(47, true)]
+    [InlineData(0, true)]
+    [InlineData(0, false)]
+    public void Restore_WithPersistedData_ShouldPreserveState(
+    int stock,
+    bool isActive)
+    {
+        var details = new ProductDetails(
+            "SKU-001", "Laptop", 1, "Device");
+        var product = Product.Restore(25, details, stock, isActive);
+        Assert.Equal(25, product.Id);
+        Assert.Equal("SKU-001", product.SKU);
+        Assert.Equal("Laptop", product.Name);
+        Assert.Equal(1, product.CategoryId);
+        Assert.Equal("Device", product.Description);
+        Assert.Equal(stock, product.Stock);
+        Assert.Equal(isActive, product.IsActive);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Restore_WithInvalidId_ShouldThrowException(int id)
+    {
+        var details = new ProductDetails("SKU-001", "Laptop", 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Product.Restore(id, details, 0, true));
+    }
+
+    [Fact]
+    public void Restore_WithNegativeStock_ShouldThrowException()
+    {
+        var details = new ProductDetails("SKU-001", "Laptop", 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Product.Restore(25, details, -1, true));
+    }
+
+    [Fact]
+    public void Restore_WithInactiveProductAndStock_ShouldThrowException()
+    {
+        var details = new ProductDetails("SKU-001", "Laptop", 1);
+        Assert.Throws<ArgumentException>(() =>
+            Product.Restore(25, details, 10, false));
+    }
+
     private static Product CreateProduct()
     {
         return new Product(new ProductDetails("SKU-001", "Laptop", 1, "Device"));

@@ -152,4 +152,25 @@ public class CategoryTests
         category.Deactivate();
         Assert.False(category.IsActive);
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Restore_WithPersistedData_ShouldPreserveState(bool isActive)
+    {
+        var category = Category.Restore(
+            25, "Electronics", "Electronic devices", isActive);
+        Assert.Equal(25, category.Id);
+        Assert.Equal("Electronics", category.Name);
+        Assert.Equal("Electronic devices", category.Description);
+        Assert.Equal(isActive, category.IsActive);
+    }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Restore_WithInvalidId_ShouldThrowException(int id)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Category.Restore(id, "Electronics", null, true));
+    }
 }

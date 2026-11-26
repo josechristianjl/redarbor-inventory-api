@@ -1,6 +1,6 @@
 # AI Usage Log
 
-Status: Updated through local domain validation, 2026-11-25. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
+Status: Updated through local persistence validation, 2026-11-26. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
 
 ## Session 1 — Assessment review and specification (2026-11-23)
 Tool: ChatGPT.
@@ -117,3 +117,156 @@ Final local command output after the analyzer configuration change: 84 total, 84
 
 ### Remaining limitations
 The initial domain is implemented and locally tested, but its latest code has not yet been inspected on GitHub. No application handlers, database persistence, real concurrent transactions, OAuth2 protection, business HTTP endpoints or full Compose deployment have been verified. Domain coverage is not solution-wide coverage. The phase 4 commit and remote code review remain pending at the time this update is prepared. The assessment's separate decision-making answers must reflect the candidate's actual experiences and are not invented here.
+
+## Session 5 — Persistence, transactions and concurrency (2026-11-25 to 2026-11-26)
+Tool: ChatGPT.
+
+### Main prompts and collaboration
+
+Continue with the approved persistence phase, including SQL Server configuration, database initialization, EF Core mappings, Dapper repositories, inventory transactions and integration testing.
+
+The candidate implemented the proposed files locally using Visual Studio, managed SQL Server through Docker Desktop and SSMS, and executed test and coverage commands through PowerShell.
+
+The assistant proposed incremental implementations and test scenarios. The candidate reported RED and GREEN results before continuing through subsequent development stages.
+
+Examples of actual candidate confirmations:
+
+- "Confírmo que las 102 pruebas pasan después de la refactorización y que posteriormente las 108 pruebas pasan sin errores ni advertencias."
+- "Confírmo los resultados de las 133 y 154 pruebas en RED y GREEN."
+- "Confírmo los resultados de las 166 pruebas en RED y GREEN."
+- "Confírmo que las 173 pruebas pasan sin errores ni advertencias y que las diez ejecuciones de concurrencia finalizan correctamente."
+
+The candidate also supplied actual Release build, test execution and coverage output.
+
+### AI proposals and implementation decisions
+
+| Proposal | Outcome and rationale |
+|---|---|
+| SQL Server 2022 with Docker Compose | Implemented and locally verified. Provides reproducible database infrastructure. |
+| Versioned SQL initialization scripts | Implemented instead of EF migrations to maintain one explicit schema initialization mechanism. |
+| Restricted database account | Implemented inventory_app with application-specific permissions. Verified through integration tests. |
+| EF Core DTO projections | Implemented for active-only reads without entity tracking. |
+| Shared pagination helper | Extracted after the initial repository tests passed. The candidate confirmed all 102 regression tests passed afterward. |
+| Testcontainers integration tests | Implemented using isolated SQL Server instances and shared initialization scripts. |
+| Centralized connection string and connection factory | Implemented to provide consistent EF Core and Dapper database configuration. |
+| Explicit entity restoration | Implemented Category.Restore and Product.Restore to preserve persisted identity, active state and stock. |
+| Narrow Dapper write repositories | Implemented without a generic repository or generic Unit of Work. |
+| Ordered transactional locks | Implemented to coordinate product changes, stock movements and category deletion. |
+| Atomic stock and movement persistence | Implemented with one connection and transaction. |
+| Real SQL constraint failure for rollback testing | Implemented to verify actual SQL Server rollback rather than relying on mocked failures. |
+| Additional conditional stock update | Not implemented. The selected implementation uses locked state, domain validation, an affected-row check and database constraints. |
+| General deadlock retry policy | Deferred after concurrency verification. Arbitrary SQL errors and uncertain commits are not retried automatically. |
+| Development demonstration data | Deferred by the candidate until a later deployment phase. Integration test data remains isolated. |
+
+The technical rationale in this table describes the proposed and implemented design. It should not be interpreted as independently stated personal reasoning from the candidate unless explicitly recorded in the conversation.
+
+### TDD evidence
+
+Candidate-confirmed local executions:
+
+| Cycle | RED passed | RED failed | GREEN passed | GREEN failed |
+|---|---:|---:|---:|---:|
+| EF Core read repositories | 92 | 10 | 102 | 0 |
+| Category restoration | 108 | 4 | 112 | 0 |
+| Category write repository | 112 | 14 | 126 | 0 |
+| Product restoration | 126 | 7 | 133 | 0 |
+| Product write repository | 133 | 21 | 154 | 0 |
+| Inventory movement write repository | 154 | 12 | 166 | 0 |
+
+Four EF Core mapping tests, six configuration and connection tests, seven concurrency tests and eighteen database integrity and permission tests were additional verification cases, not separate RED/GREEN cycles.
+
+Phase 5 added 107 test cases, increasing the total from 84 to 191.
+
+The project has thirteen recorded RED/GREEN cycles across the domain and persistence phases.
+
+### Transaction and concurrency verification
+
+The candidate confirmed successful verification of:
+
+- Atomic inventory entry and exit registration.
+- Insufficient stock and stock overflow prevention.
+- Stock rollback after a forced SQL constraint violation.
+- Concurrent exits with insufficient stock for both operations.
+- Ten simultaneous inventory entries.
+- Inventory entry versus product deactivation.
+- Product creation versus category deactivation.
+- Product reassignment versus destination category deactivation.
+- Concurrent category changes.
+- Concurrent duplicate SKU creation.
+
+Seven concurrency tests were additionally repeated ten times, producing 70 successful test-case executions.
+
+These repetitions are not 70 distinct test cases or a formal load test.
+
+### Corrections during verification
+
+The first Release coverage execution completed with 191 passing tests but reported three warnings:
+
+- CA1861 in DatabaseIntegrityTests.cs.
+- CA1861 in ConcurrentWriteRepositoryTests.cs.
+- No tests discovered in the currently empty Application.Tests project.
+
+The assistant proposed replacing repeated constant array arguments with static readonly fields instead of suppressing CA1861.
+
+The candidate subsequently executed a clean Release build and ran the two populated test projects separately.
+
+Application.Tests was retained for the upcoming application use case phase. No artificial tests were added to suppress its discovery warning.
+
+### Final measured results
+
+Local execution date: 2026-11-26.
+
+Commands:
+
+```powershell
+dotnet build --configuration Release --no-incremental
+
+dotnet test tests/InventoryManagement.Domain.Tests/InventoryManagement.Domain.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory .\TestResults\Phase5Final\Domain
+
+dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory .\TestResults\Phase5Final\Integration
+```
+
+| Metric | Result |
+|---|---:|
+| Release build duration | 6.4 seconds |
+| Release build warnings | 0 |
+| Domain unit tests | 95 passed |
+| Integration project tests | 96 passed |
+| Total tests | 191 passed |
+| Failed / skipped | 0 / 0 |
+| Domain test duration | 3.0 seconds |
+| Integration test duration | 68.2 seconds |
+
+Coverage reported from the final execution:
+
+| Test project | Assembly | Line coverage | Branch coverage |
+|---|---|---:|---:|
+| Domain.Tests | Domain | 96.31% | 100.00% |
+| IntegrationTests | Domain | 86.50% | 75.00% |
+| IntegrationTests | Infrastructure | 97.54% | 90.62% |
+| IntegrationTests | Application | 100.00% | 100.00% |
+| IntegrationTests | API | 0.00% | 0.00% |
+
+These measurements are not combined solution coverage.
+
+Application coverage currently reflects the limited executable code in its contracts, models and exceptions. It does not demonstrate coverage of application use cases that have not yet been implemented.
+
+Infrastructure branch coverage was 91.66% in the preceding execution and 90.62% in the final execution. The exact reason for the difference was not established. Concurrency execution paths may vary between runs.
+
+### Docker persistence verification
+
+The candidate confirmed that a temporary database record survived SQL Server container recreation and repeated database initialization.
+
+The temporary verification table was removed afterward.
+
+No demonstration inventory data was added to the development database as part of this verification.
+
+### Remaining limitations
+
+The assistant did not independently execute the local tests.
+
+The persistence implementation has been verified locally but its latest code has not yet been statically reviewed on GitHub.
+
+Application use cases, HTTP endpoints, OAuth2, full container deployment, API integration tests and CI/CD remain pending.
+
+The assessment's decision-making answers must reflect the candidate's actual professional experience and will be documented separately.

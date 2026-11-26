@@ -1,4 +1,4 @@
-﻿using InventoryManagement.Domain.Validation;
+using InventoryManagement.Domain.Validation;
 using InventoryManagement.Domain.Exceptions;
 
 namespace InventoryManagement.Domain.Entities;
@@ -44,5 +44,20 @@ public class Category
     public void Deactivate()
     {
         IsActive = false;
+    }
+
+    public static Category Restore(
+    int id,
+    string name,
+    string? description,
+    bool isActive)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(id);
+
+        return new Category(name, description)
+        {
+            Id = id,
+            IsActive = isActive
+        };
     }
 }

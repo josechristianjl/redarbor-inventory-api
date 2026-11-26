@@ -1,6 +1,6 @@
 # Inventory Management API — Architecture
 
-Status: Candidate-approved architecture baseline v0.2, with domain update v0.3 and persistence implementation update v0.4, 2026-11-26. Implementation in progress.
+Status: Candidate-approved architecture baseline v0.2, with domain update v0.3, persistence implementation update v0.4 and application implementation update v0.5. Implementation in progress.
 Functional baseline: SPEC.md v0.3 (candidate-approved scope; architecture references updated).
 
 ## ADR-001 — Runtime and architecture
@@ -66,7 +66,7 @@ Product checks positive quantities, insufficient stock and overflow before modif
 
 InventoryMovement has no public mutation methods. Its product ID and quantity must be positive; the byte-backed MovementType allows Entry=1 and Exit=2 only.
 
-The constructor requires DateTimeKind.Utc and an explicit timestamp. Application will provide the timestamp rather than accepting client-controlled creation dates.
+The constructor requires DateTimeKind.Utc and an explicit timestamp. Application now provides this timestamp through TimeProvider.GetUtcNow().UtcDateTime rather than accepting client-controlled creation dates.
 
 EF Core maps CreatedAt to datetime2(7) and restores DateTimeKind.Utc during materialization. Dapper explicitly binds movement timestamps using DbType.DateTime2 with scale 7.
 
@@ -149,7 +149,7 @@ Read repositories use AsNoTracking, active-record filtering, DTO projections and
 
 PaginationHelper centralizes count, offset and page retrieval. Offset arithmetic uses long to prevent integer overflow. Requests beyond the available record count return an empty page.
 
-Page validation is an Application responsibility and remains pending.
+Page validation is implemented in Application through PageRequestValidator. Both category and product query handlers validate pagination before invoking their read repositories.
 
 Count and page retrieval are separate database operations and do not guarantee snapshot consistency under concurrent writes.
 
@@ -174,7 +174,9 @@ InventoryDbContext and persistence repositories are registered as Scoped.
 
 AddInventoryPersistence centralizes persistence dependency registration.
 
-The API composition root will invoke this registration when application use cases and endpoints are integrated.
+ApplicationServiceRegistration and AddInventoryPersistence have been verified together through dependency composition tests.
+
+The final Program.cs integration remains pending until Phase 7.
 
 The local .env file is not automatically loaded by ASP.NET Core. Docker Compose and local API debugging must provide the required configuration explicitly.
 
@@ -208,15 +210,136 @@ Final local Release results:
 
 Coverage values are obtained from separate assembly-level reports, not combined solution coverage.
 
-Application.Tests remains empty until application use case development.
+At the Phase 5 milestone, Application.Tests did not contain business use case tests. Phase 6 subsequently introduced 142 Application unit test cases.
 
 These results are based on candidate-executed local tests and supplied command output, not independent assistant execution.
+
+## ADR-017 — Explicit application CQRS handlers
+
+Status: Implemented and locally unit-tested during Phase 6.
+
+Application organizes use cases by functional module: Categories, Products and InventoryMovements.
+
+Use explicit typed contracts:
+
+- IQueryHandler<TQuery, TResult>
+- ICommandHandler<TCommand, TResult>
+- ICommandHandler<TCommand>
+
+Queries return read models or paginated results.
+
+Creation commands and inventory movement registration return the generated identifier. Update and logical deletion commands do not return a result.
+
+Eleven handlers implement the approved functional use cases.
+
+No mediator library, generic dispatcher, service locator or custom messaging pipeline is introduced.
+
+Handlers depend on persistence abstractions rather than EF Core, Dapper, SQL Server or ASP.NET Core.
+
+Application coordinates use cases while Domain protects business invariants and Infrastructure coordinates transactional persistence.
+
+Product and category existence checks, uniqueness checks and state-dependent business rules remain protected by the transactional persistence protocol rather than redundant application-level prechecks.
+
+Get-by-ID handlers translate unavailable read results into the existing identifiable not-found exception contract.
+
+Known domain and persistence exceptions propagate to the future API exception handler.
+
+Cancellation tokens are forwarded to persistence operations.
+
+
+## ADR-018 — Application input validation
+
+Status: Implemented and locally unit-tested.
+
+Use FluentValidation core with explicit asynchronous invocation through ValidateAndThrowAsync.
+
+Handlers validate requests before calling persistence dependencies.
+
+PageRequestValidator is shared by category and product pagination queries.
+
+CategoryValidationRules centralizes category input rules.
+
+ProductValidationRules centralizes product input rules, including identifiers reused by inventory movement registration.
+
+Required text must be nonblank. Length validation uses trimmed input and reuses maximum length constants defined in Domain.
+
+Optional descriptions may be null or whitespace.
+
+CascadeMode.Stop prevents redundant validation failures within the same required-text rule.
+
+Independent properties continue to be validated so multiple input errors can be reported together.
+
+Domain remains responsible for effective normalization and entity invariants.
+
+No database-backed validation prechecks, custom validation pipeline or validator inheritance hierarchy is introduced.
+
+HTTP error mapping remains an API responsibility.
+
+
+## ADR-019 — Inventory movement timestamp generation
+
+Status: Implemented and locally unit-tested.
+
+RegisterInventoryMovementCommand contains ProductId, Type and Quantity.
+
+Movement type validation explicitly permits Entry and Exit.
+
+Application receives the native .NET TimeProvider abstraction.
+
+TimeProvider.GetUtcNow().UtcDateTime supplies the movement timestamp.
+
+The timestamp represents movement construction time in Application, not necessarily the exact SQL transaction commit time.
+
+The client cannot supply the movement identifier, timestamp or resulting stock through the command.
+
+Unit tests use a controlled TimeProvider mock to verify exact timestamp ticks and DateTimeKind.Utc.
+
+Invalid or previously cancelled commands do not invoke the clock or persistence repository.
+
+The movement repository retains responsibility for atomic stock updates and movement insertion.
+
+
+## ADR-020 — Application dependency composition
+
+Status: Registration implemented and locally verified through composition tests.
+
+The API project owns ApplicationServiceRegistration and its AddInventoryApplication extension method.
+
+This keeps Application independent of dependency injection container packages.
+
+Registrations are explicit rather than assembly-scanned.
+
+Service lifetimes:
+
+- Eleven CQRS handlers: Scoped.
+- Ten FluentValidation validators: Scoped.
+- TimeProvider.System: Singleton.
+- Persistence repositories: Scoped.
+- InventoryDbContext: Scoped.
+- SqlConnectionFactory: Singleton.
+
+Application and persistence registration are verified together using ValidateOnBuild and ValidateScopes.
+
+Twenty-two composition test cases verify implementation types, registration uniqueness and service lifetimes.
+
+Composition tests do not open SQL Server connections.
+
+Program.cs registration, actual HTTP request processing and host-level validation remain pending for Phase 7.
 
 ## Repository layout
 
 - src/InventoryManagement.Domain
 - src/InventoryManagement.Application
+  - Abstractions/Messaging
   - Abstractions/Persistence
+  - Categories/Commands
+  - Categories/Queries
+  - Categories/Validation
+  - Products/Commands
+  - Products/Queries
+  - Products/Validation
+  - InventoryMovements/Commands
+  - Validation
   - Models
   - Exceptions
 - src/InventoryManagement.Infrastructure
@@ -227,9 +350,14 @@ These results are based on candidate-executed local tests and supplied command o
   - Persistence/Repositories/Read
   - Persistence/Repositories/Write
 - src/InventoryManagement.Api
+  - Configuration
 - tests/InventoryManagement.Domain.Tests
 - tests/InventoryManagement.Application.Tests
+  - Categories
+  - Products
+  - InventoryMovements
 - tests/InventoryManagement.IntegrationTests
+  - Composition
   - Fixtures
   - Persistence
 - database/scripts
@@ -240,8 +368,9 @@ Root configuration includes .env.example, .gitignore, .gitattributes, docker-com
 
 Planned additions:
 
-- Application commands, queries, handlers and validators.
-- API controllers and centralized exception handling.
+- API controllers and HTTP request contracts.
+- Centralized exception handling and ProblemDetails mapping.
+- OAuth2 authentication and authorization configuration.
 - infrastructure/keycloak/ realm configuration.
 - docs/DECISIONS.md with candidate decision-making answers.
 - .github/workflows/ci.yml.
@@ -252,14 +381,27 @@ Planned additions:
 
 The Phase 4 domain commit was statically reviewed on GitHub after publication.
 
-Phase 5 persistence implementation has been locally verified through automated tests, coverage reports and manual Docker volume persistence verification.
+The Phase 5 persistence commit (3c553e35e5e32848c8bb17915089a82b4ad0e777) was statically reviewed on GitHub following local verification.
 
-The Phase 5 remote code review remains pending until its commit is published.
+Phase 6 introduced eleven application use cases, input validation and dependency composition.
+
+Candidate-reported Phase 6 results:
+
+- 95 Domain unit test cases passed.
+- 142 Application unit test cases passed.
+- 96 persistence integration test cases passed.
+- 22 dependency composition test cases passed.
+- 355 total test cases passed.
+- Zero failures, skipped tests and reported build warnings.
+- Application line coverage: 96.70%.
+- Application branch coverage: 88.46%.
+
+Phase 6 remote code review remains pending until its commit is published.
 
 Remaining work includes:
 
-- Application use cases and input validation.
 - HTTP controllers and ProblemDetails error mapping.
+- Program.cs dependency integration.
 - OAuth2 authentication and authorization.
 - Full Docker Compose deployment and clean-start verification.
 - API-level integration tests.
@@ -267,4 +409,4 @@ Remaining work includes:
 - Candidate decision-making answers.
 - Final submission documentation.
 
-Existing persistence tests do not establish complete API or system-wide correctness.
+Existing unit, persistence and composition tests do not establish complete API or system-wide correctness.

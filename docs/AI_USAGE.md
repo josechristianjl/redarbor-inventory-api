@@ -1,6 +1,6 @@
 # AI Usage Log
 
-Status: Updated through local persistence validation, 2026-11-26. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
+Status: Updated through local Application and dependency composition validation, Phase 6. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
 
 ## Session 1 — Assessment review and specification (2026-11-23)
 Tool: ChatGPT.
@@ -265,8 +265,164 @@ No demonstration inventory data was added to the development database as part of
 
 The assistant did not independently execute the local tests.
 
-The persistence implementation has been verified locally but its latest code has not yet been statically reviewed on GitHub.
+The persistence implementation was subsequently statically reviewed on GitHub after publication of commit 3c553e35e5e32848c8bb17915089a82b4ad0e777. The assistant inspected the committed changes, implementation files, test scenarios and documentation. No independent build or test execution was performed during that review.
 
 Application use cases, HTTP endpoints, OAuth2, full container deployment, API integration tests and CI/CD remain pending.
 
 The assessment's decision-making answers must reflect the candidate's actual professional experience and will be documented separately.
+
+## Session 6 — Application use cases, TDD and dependency composition
+
+Tool: ChatGPT.
+
+### Main prompts and collaboration
+
+The candidate requested continuation into Phase 6 after the persistence implementation and its remote review.
+
+Original prompt:
+
+"Perfecto. Gracias. Comencemos entonces con la fase 6."
+
+Subsequent prompts confirmed incremental RED/GREEN results, refactoring regressions and full solution test executions.
+
+The candidate also reported a PowerShell coverage extraction failure and supplied the corrected coverage report for analysis.
+
+The assistant proposed implementation instructions, test scenarios, minimal compilable stubs, production implementations and refactorings. The candidate created and edited the files locally in Visual Studio and executed the commands.
+
+The assistant did not independently compile or execute the Phase 6 code.
+
+### Specification-first development
+
+The application use cases were derived from the previously approved SPEC.md v0.3 and architecture baseline.
+
+No additional business functionality was introduced.
+
+Before implementing each use case, the assistant described its inputs, expected behavior, validation rules, persistence interactions and error outcomes.
+
+Test scenarios were proposed before their GREEN implementations.
+
+### AI proposals and implementation decisions
+
+| Proposal | Outcome and rationale |
+|---|---|
+| Explicit CQRS handler contracts | Implemented typed query and command contracts without MediatR or a generic dispatcher. |
+| Functional module organization | Implemented Categories, Products and InventoryMovements folders containing their use cases. |
+| Explicit FluentValidation invocation | Implemented request validation before persistence operations. |
+| Shared pagination validation | Implemented PageRequestValidator for both paginated query handlers. |
+| Validate normalized text length | Implemented validation consistent with existing Domain normalization rules. |
+| Preserve domain-owned invariants | Retained Domain validation and entity state protection. |
+| Reuse ProductDetails | Implemented product creation and update without exposing stock or active-state mutation. |
+| Avoid persistence prechecks | Retained transactional existence, uniqueness and state checks inside Infrastructure to avoid redundant and race-prone prechecks. |
+| Reuse identifiable exception contracts | Implemented not-found handling and propagation of known domain and persistence exceptions. |
+| Simplify handler validation | Replaced repeated validation-result inspection with FluentValidation ValidateAndThrowAsync after successful regression tests. |
+| Extract category validation rules | Implemented shared CategoryValidationRules after completing category use cases. |
+| Extract product validation rules | Implemented shared ProductValidationRules after completing product use cases. |
+| Use native TimeProvider | Implemented deterministic UTC timestamp generation without a custom clock abstraction. |
+| Register dependencies explicitly | Implemented AddInventoryApplication in API without adding dependency injection packages to Application. |
+| Verify dependency lifetimes | Implemented composition tests using ValidateOnBuild and ValidateScopes. |
+
+The candidate implemented the proposed changes and confirmed the local test results. These confirmations establish the reported implementation and verification workflow, but do not constitute independently stated candidate rationales for every AI proposal.
+
+### TDD evidence
+
+The following table records candidate-confirmed local RED and GREEN executions.
+
+Application counts are cumulative within Application.Tests. Dependency composition counts refer only to the filtered ApplicationRegistrationTests class.
+
+| Cycle | RED passed | RED failed | GREEN passed | GREEN failed |
+|---|---:|---:|---:|---:|
+| GetCategories | 0 | 12 | 12 | 0 |
+| GetCategoryById | 12 | 7 | 19 | 0 |
+| CreateCategory | 19 | 13 | 32 | 0 |
+| UpdateCategory | 32 | 16 | 48 | 0 |
+| DeleteCategory | 48 | 7 | 55 | 0 |
+| GetProducts | 55 | 12 | 67 | 0 |
+| GetProductById | 67 | 7 | 74 | 0 |
+| CreateProduct | 74 | 20 | 94 | 0 |
+| UpdateProduct | 94 | 24 | 118 | 0 |
+| DeleteProduct | 118 | 7 | 125 | 0 |
+| RegisterInventoryMovement | 125 | 17 | 142 | 0 |
+| Dependency composition | 0 | 22 | 22 | 0 |
+
+The candidate confirmed twelve additional RED/GREEN cycles during Phase 6.
+
+### Refactoring verification
+
+| Refactoring | Regression result |
+|---|---:|
+| Replace repeated handler validation with ValidateAndThrowAsync | 55 passed |
+| Extract CategoryValidationRules | 55 passed |
+| Extract ProductValidationRules | 125 passed |
+
+No additional abstraction was introduced solely to eliminate superficial duplication.
+
+### Corrections and limitations of AI-generated instructions
+
+The initial PowerShell coverage extraction instructions failed in the candidate's terminal.
+
+Assigning a FileInfo result to the existing report variable triggered an XML conversion error. Subsequent commands failed because no valid file path or coverage data had been loaded.
+
+The likely cause was an existing typed variable retained from an earlier PowerShell session.
+
+The assistant corrected the instructions by removing the previous variables, locating the report with Get-ChildItem, checking that the file existed and loading it using XmlDocument.Load.
+
+The candidate subsequently supplied successful assembly-level, class-level and uncovered-line output.
+
+No Application production code change was required to correct the coverage extraction procedure.
+
+### Application coverage verification
+
+Command used:
+
+```sh
+dotnet test tests/InventoryManagement.Application.Tests/InventoryManagement.Application.Tests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory "./TestResults/Phase6/Application"
+```
+
+The candidate supplied actual terminal output reporting 142 passed tests, zero failures and zero skipped tests.
+
+Measured coverage from the supplied report:
+
+| Assembly | Line coverage | Branch coverage |
+|---|---:|---:|
+| InventoryManagement.Application | 96.70% | 88.46% |
+| InventoryManagement.Domain | 49.07% | 37.50% |
+
+The Domain figures above represent only the code exercised by Application.Tests. They are not the Domain unit test coverage baseline.
+
+All eleven Application handlers report 100% line and branch coverage.
+
+CategoryValidationRules reports 100% line coverage and 87.50% branch coverage.
+
+ProductValidationRules reports 100% line coverage and 83.33% branch coverage.
+
+The exact unexecuted validation branches were not identified from the supplied report.
+
+The twelve uncovered Application lines belong to CategoryReadModel, ProductReadModel and PagedResult.
+
+The assistant recommended against adding artificial property-access tests solely to increase the coverage metric. The candidate continued with dependency composition verification.
+
+### Final local verification
+
+| Metric | Result |
+|---|---:|
+| Domain unit tests | 95 passed |
+| Application unit tests | 142 passed |
+| Persistence integration tests | 96 passed |
+| Dependency composition tests | 22 passed |
+| Total tests | 355 passed |
+| Failed / skipped | 0 / 0 |
+| Release build warnings | 0 |
+
+The candidate confirmed successful RED and GREEN composition tests and complete solution regression.
+
+The composition tests verify resolution and lifetimes of registered services without opening SQL Server connections.
+
+### Remaining limitations
+
+Phase 6 results are based on candidate-executed local tests, explicit confirmations and supplied coverage output.
+
+The assistant has not independently executed these tests or reviewed the unpublished Phase 6 commit.
+
+Program.cs integration, HTTP endpoints, centralized error responses, OAuth2, complete Docker Compose deployment, API integration tests and CI/CD remain pending.
+
+The candidate's professional decision-making answers remain a separate submission requirement and must reflect actual experience.

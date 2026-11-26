@@ -17,8 +17,10 @@ RESTful inventory management API built with .NET 10, Clean Architecture, CQRS, S
 | Dapper write repositories | Completed |
 | Inventory transactions and rollback | Completed |
 | Concurrency verification | Completed |
-| Application use cases and validation | Pending |
+| Application use cases and validation | Completed |
+| Dependency registration and composition tests | Completed |
 | REST API endpoints | Pending |
+| Centralized HTTP error handling | Pending |
 | OAuth2 authentication and authorization | Pending |
 | Full Docker Compose deployment | Pending |
 | CI/CD | Pending |
@@ -109,7 +111,11 @@ Alternatively, open InventoryManagement.slnx in Visual Studio, set InventoryMana
 
 Swagger is available in the Development environment.
 
-Business endpoints and API persistence registration are pending. The persistence components can currently be exercised through integration tests.
+All eleven application use cases have been implemented and tested.
+
+Application and persistence dependency registration methods are available and have been verified through composition tests.
+
+The registration methods are not yet invoked by Program.cs. Business endpoints, centralized HTTP error handling and OAuth2 integration remain pending.
 
 ## Tests
 
@@ -127,6 +133,14 @@ Run domain unit tests:
 dotnet test tests/InventoryManagement.Domain.Tests/InventoryManagement.Domain.Tests.csproj --configuration Release
 ```
 
+Run application unit tests:
+
+```sh
+dotnet test tests/InventoryManagement.Application.Tests/InventoryManagement.Application.Tests.csproj --configuration Release
+```
+
+Application tests use xUnit, Moq and real FluentValidation validators. They do not require SQL Server or Docker.
+
 Run integration tests:
 
 ```sh
@@ -137,37 +151,98 @@ Testcontainers creates isolated SQL Server instances and initializes them using 
 
 The integration tests do not modify the development database.
 
+Run dependency composition tests independently:
+
+```sh
+dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj --configuration Release --filter "FullyQualifiedName~ApplicationRegistrationTests"
+```
+
+Composition tests verify service resolution, dependency graphs and service lifetimes without opening SQL Server connections.
+
+Run the complete test suite:
+
+```sh
+dotnet test --configuration Release
+```
+
+Docker must be running for the complete test suite.
+
 ### Coverage
 
 ```sh
 dotnet test tests/InventoryManagement.Domain.Tests/InventoryManagement.Domain.Tests.csproj --configuration Release --collect:"XPlat Code Coverage" --results-directory "./TestResults/DomainCoverage"
 
 dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj --configuration Release --collect:"XPlat Code Coverage" --results-directory "./TestResults/IntegrationCoverage"
+
+dotnet test tests/InventoryManagement.Application.Tests/InventoryManagement.Application.Tests.csproj --configuration Release --collect:"XPlat Code Coverage" --results-directory "./TestResults/ApplicationCoverage"
 ```
 
 Generated coverage reports are excluded from version control.
 
-### Quality baseline — Phase 5
+### Quality baseline — Phase 6
 
-Local execution results reported by the candidate on 2026-11-26:
+Local Release execution results reported by the candidate:
 
 | Metric | Result |
 |---|---:|
 | Domain unit test cases | 95 |
-| Integration project test cases | 96 |
-| Total test cases | 191 |
-| Passed | 191 |
+| Application unit test cases | 142 |
+| Persistence and database integration test cases | 96 |
+| Dependency composition test cases | 22 |
+| Total test cases | 355 |
+| Passed | 355 |
 | Failed | 0 |
 | Skipped | 0 |
 | Release build warnings | 0 |
-| Domain line coverage | 96.31% |
-| Domain branch coverage | 100.00% |
-| Infrastructure line coverage | 97.54% |
-| Infrastructure branch coverage | 90.62% |
 
-Domain coverage is obtained from Domain.Tests. Infrastructure coverage is obtained from IntegrationTests. These are separate assembly-level measurements, not combined solution coverage.
+### Application use cases
 
-The Application.Tests project is currently empty and will be populated during application use case development.
+| Module | Use cases | Unit test cases |
+|---|---:|---:|
+| Categories | 5 | 55 |
+| Products | 5 | 70 |
+| Inventory movements | 1 | 17 |
+| Total | 11 | 142 |
+
+Application implements explicit CQRS handlers without MediatR.
+
+Request validation is performed using FluentValidation before persistence operations. Domain entities retain their own business invariants.
+
+Inventory movement timestamps are generated through TimeProvider and stored in UTC.
+
+### Measured code coverage
+
+| Phase | Test project | Assembly | Line coverage | Branch coverage |
+|---|---|---|---:|---:|
+| 5 | Domain.Tests | Domain | 96.31% | 100.00% |
+| 5 | IntegrationTests | Infrastructure | 97.54% | 90.62% |
+| 6 | Application.Tests | Application | 96.70% | 88.46% |
+
+Coverage values originate from separate assembly-level reports and are not combined solution coverage.
+
+Domain and Infrastructure percentages are retained from the Phase 5 measurements.
+
+All eleven Application handlers report 100% line coverage and 100% branch coverage.
+
+The twelve uncovered Application lines belong to data transport records. No artificial tests or coverage exclusions were introduced solely to increase the coverage percentage.
+
+### Verified application scenarios
+
+- Paginated category and product queries.
+- Active-resource lookup by identifier.
+- Category and product creation, update and logical deletion.
+- Required input validation and normalized text length validation.
+- Rejection of invalid identifiers, quantities and movement types.
+- Correct construction of new products with zero stock.
+- Deterministic UTC timestamp generation for inventory movements.
+- Propagation of domain and persistence rule exceptions.
+- Cancellation token propagation.
+- Rejection of invalid requests before repository calls.
+- Resolution of all eleven handlers and ten validators through native dependency injection.
+- Scoped handler and validator lifetimes.
+- Singleton TimeProvider registration.
+
+HTTP behavior and authentication remain subject to API-level verification.
 
 ### Verified persistence scenarios
 

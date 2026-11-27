@@ -178,7 +178,9 @@ public class DatabaseIntegrityTests
             .GetRequiredService<IProductWriteRepository>();
         var categoryName = $"Updated-{Guid.NewGuid():N}";
         await categories.UpdateAsync(
-            categoryId, categoryName, "Description", CancellationToken.None);
+            categoryId,
+            new CategoryDetails(categoryName, "Description"),
+            CancellationToken.None);
         var details = new ProductDetails(
             $"TEST-{Guid.NewGuid():N}", "Monitor", categoryId);
         await products.UpdateAsync(

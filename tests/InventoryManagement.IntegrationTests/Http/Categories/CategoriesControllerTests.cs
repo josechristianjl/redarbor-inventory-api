@@ -8,6 +8,7 @@ using InventoryManagement.Domain.Entities;
 using Moq;
 using System.Diagnostics.CodeAnalysis;
 using static InventoryManagement.IntegrationTests.Http.HttpResponseAssertions;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.IntegrationTests.Http.Categories;
 
@@ -214,14 +215,14 @@ public class CategoriesControllerTests : IAsyncLifetime
             Description = "  Updated description  "
         };
         _host.CategoryWrite.Setup(repository => repository.UpdateAsync(
-                7, request.Name!, request.Description,
+                7, new CategoryDetails(request.Name!, request.Description),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         using var response = await _client.PutAsJsonAsync(
             $"{BasePath}/7", request);
         await AssertNoContentAsync(response);
         _host.CategoryWrite.Verify(repository => repository.UpdateAsync(
-            7, request.Name!, request.Description,
+            7, new CategoryDetails(request.Name!, request.Description),
             It.IsAny<CancellationToken>()), Times.Once());
         _host.VerifyNoRepositoryCalls();
     }
@@ -234,7 +235,7 @@ public class CategoriesControllerTests : IAsyncLifetime
             Name = "Electronics"
         };
         _host.CategoryWrite.Setup(repository => repository.UpdateAsync(
-                99, request.Name!, request.Description,
+                99, new CategoryDetails(request.Name!, request.Description),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new PersistenceRuleException(
                 PersistenceRuleCode.CategoryNotFound,
@@ -244,7 +245,7 @@ public class CategoriesControllerTests : IAsyncLifetime
         await AssertProblemAsync(
             response, HttpStatusCode.NotFound, "CategoryNotFound");
         _host.CategoryWrite.Verify(repository => repository.UpdateAsync(
-            99, request.Name!, request.Description,
+            99, new CategoryDetails(request.Name!, request.Description),
             It.IsAny<CancellationToken>()), Times.Once());
         _host.VerifyNoRepositoryCalls();
     }

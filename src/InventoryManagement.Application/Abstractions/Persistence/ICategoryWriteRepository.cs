@@ -1,4 +1,5 @@
 using InventoryManagement.Domain.Entities;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.Application.Abstractions.Persistence;
 
@@ -10,8 +11,7 @@ public interface ICategoryWriteRepository
 
     Task UpdateAsync(
         int id,
-        string name,
-        string? description,
+        CategoryDetails details,
         CancellationToken cancellationToken);
 
     Task DeactivateAsync(

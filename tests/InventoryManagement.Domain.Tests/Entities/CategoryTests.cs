@@ -1,5 +1,6 @@
 using InventoryManagement.Domain.Entities;
 using InventoryManagement.Domain.Exceptions;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.Domain.Tests.Entities;
 
@@ -75,7 +76,7 @@ public class CategoryTests
     public void UpdateDetails_WithValidData_ShouldUpdateCategory()
     {
         var category = new Category("Electronics", "Electronic products");
-        category.UpdateDetails("  Computers  ", "  Computer products  ");
+        category.UpdateDetails(new CategoryDetails("  Computers  ", "  Computer products  "));
         Assert.Equal("Computers", category.Name);
         Assert.Equal("Computer products", category.Description);
         Assert.True(category.IsActive);
@@ -85,7 +86,7 @@ public class CategoryTests
     public void UpdateDetails_WithNullDescription_ShouldClearDescription()
     {
         var category = new Category("Electronics", "Electronic products");
-        category.UpdateDetails("Computers", null);
+        category.UpdateDetails(new CategoryDetails("Computers", null));
         Assert.Equal("Computers", category.Name);
         Assert.Null(category.Description);
     }
@@ -98,7 +99,7 @@ public class CategoryTests
     {
         var category = new Category("Electronics", "Electronic products");
         Assert.ThrowsAny<ArgumentException>(() =>
-            category.UpdateDetails(name!, "New description"));
+            category.UpdateDetails(new CategoryDetails(name!, "New description")));
         Assert.Equal("Electronics", category.Name);
         Assert.Equal("Electronic products", category.Description);
     }
@@ -109,7 +110,7 @@ public class CategoryTests
         var category = new Category("Electronics");
         var name = new string('A', 151);
         Assert.Throws<ArgumentException>(() =>
-            category.UpdateDetails(name, null));
+            category.UpdateDetails(new CategoryDetails(name, null)));
     }
 
     [Fact]
@@ -118,7 +119,7 @@ public class CategoryTests
         var category = new Category("Electronics", "Electronic products");
         var description = new string('A', 501);
         Assert.Throws<ArgumentException>(() =>
-            category.UpdateDetails("Computers", description));
+            category.UpdateDetails(new CategoryDetails("Computers", description)));
         Assert.Equal("Electronics", category.Name);
         Assert.Equal("Electronic products", category.Description);
     }
@@ -129,7 +130,7 @@ public class CategoryTests
         var category = new Category("Electronics");
         category.Deactivate();
         var exception = Assert.Throws<DomainRuleException>(() =>
-            category.UpdateDetails("Computers", null));
+            category.UpdateDetails(new CategoryDetails("Computers", null)));
         Assert.Equal(DomainRuleCode.InactiveCategory, exception.Code);
         Assert.Equal("Electronics", category.Name);
     }
@@ -172,5 +173,17 @@ public class CategoryTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             Category.Restore(id, "Electronics", null, true));
+    }
+
+    [Fact]
+    public void UpdateDetails_WithNullDetails_ShouldPreserveOriginalData()
+    {
+        var category = new Category(
+            "Electronics", "Electronic products");
+        Assert.Throws<ArgumentNullException>(() =>
+            category.UpdateDetails(null!));
+        Assert.Equal("Electronics", category.Name);
+        Assert.Equal("Electronic products", category.Description);
+        Assert.True(category.IsActive);
     }
 }

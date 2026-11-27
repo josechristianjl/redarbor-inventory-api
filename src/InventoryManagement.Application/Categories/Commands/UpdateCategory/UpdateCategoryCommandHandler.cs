@@ -1,6 +1,7 @@
 using FluentValidation;
 using InventoryManagement.Application.Abstractions.Messaging;
 using InventoryManagement.Application.Abstractions.Persistence;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.Application.Categories.Commands.UpdateCategory;
 
@@ -28,10 +29,9 @@ public sealed class UpdateCategoryCommandHandler
         cancellationToken.ThrowIfCancellationRequested();
         await _validator.ValidateAndThrowAsync(
             command, cancellationToken);
+        var details = new CategoryDetails(
+            command.Name, command.Description);
         await _repository.UpdateAsync(
-            command.Id,
-            command.Name,
-            command.Description,
-            cancellationToken);
+            command.Id, details, cancellationToken);
     }
 }

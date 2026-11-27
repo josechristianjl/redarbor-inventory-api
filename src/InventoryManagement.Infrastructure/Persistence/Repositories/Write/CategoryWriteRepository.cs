@@ -5,6 +5,7 @@ using InventoryManagement.Domain.Entities;
 using InventoryManagement.Infrastructure.Persistence.Connections;
 using InventoryManagement.Infrastructure.Persistence.Models;
 using Microsoft.Data.SqlClient;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.Infrastructure.Persistence.Repositories.Write;
 
@@ -44,19 +45,20 @@ public sealed class CategoryWriteRepository : ICategoryWriteRepository
     }
 
     public async Task UpdateAsync(
-        int id,
-        string name,
-        string? description,
-        CancellationToken cancellationToken)
+    int id,
+    CategoryDetails details,
+    CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(details);
         await using var connection =
             await _connectionFactory.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)
             await connection.BeginTransactionAsync(cancellationToken);
         var category = await GetLockedCategoryAsync(
             transaction, id, cancellationToken);
-        category.UpdateDetails(name, description);
-        await UpdateCategoryAsync(transaction, category, cancellationToken);
+        category.UpdateDetails(details);
+        await UpdateCategoryAsync(
+            transaction, category, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 

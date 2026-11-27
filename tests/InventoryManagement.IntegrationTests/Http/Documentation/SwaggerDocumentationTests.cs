@@ -16,6 +16,8 @@ public class SwaggerDocumentationTests
         "http://localhost:8081/realms/inventory";
     private const string SchemeName = "oauth2";
     private const string RequiredScope = "inventory.access";
+    private static readonly string[] ExpectedMovementTypes =
+    ["Entry", "Exit"];
 
     [Fact]
     public async Task Document_ShouldDescribeOAuth2AuthorizationCodeFlow()
@@ -107,6 +109,86 @@ public class SwaggerDocumentationTests
             "\"usePkceWithAuthorizationCodeGrant\":true", script);
     }
 
+    [Theory]
+    [InlineData("CategoryWriteRequest", "name")]
+    [InlineData("ProductWriteRequest", "sku,name,categoryId")]
+    [InlineData("RegisterInventoryMovementRequest", "productId,type,quantity")]
+    public async Task Document_ShouldDescribeRequiredRequestProperties(
+    string schemaName,
+    string requiredProperties)
+    {
+        using var document = await GetSwaggerDocumentAsync();
+        var schema = GetRequestSchema(document, schemaName);
+        var required = schema.GetProperty("required")
+            .EnumerateArray()
+            .Select(property => property.GetString())
+            .OrderBy(property => property, StringComparer.Ordinal);
+        var expected = requiredProperties.Split(',')
+            .OrderBy(property => property, StringComparer.Ordinal);
+        Assert.Equal(expected, required);
+        Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
+        var properties = schema.GetProperty("properties");
+        foreach (var name in requiredProperties.Split(','))
+        {
+            var property = properties.GetProperty(name);
+            Assert.False(property.TryGetProperty("nullable", out var nullable)
+                && nullable.GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task Document_ShouldDescribeAllowedMovementTypes()
+    {
+        using var document = await GetSwaggerDocumentAsync();
+        var schema = GetRequestSchema(
+            document, "RegisterInventoryMovementRequest");
+        var movementType = schema.GetProperty("properties")
+            .GetProperty("type");
+        Assert.Equal("string",
+            movementType.GetProperty("type").GetString());
+        var allowedValues = movementType.GetProperty("enum")
+            .EnumerateArray()
+            .Select(value => value.GetString())
+            .ToArray();
+        Assert.Equal(ExpectedMovementTypes, allowedValues);
+    }
+
+    [Theory]
+    [InlineData("ProductWriteRequest", "categoryId")]
+    [InlineData("RegisterInventoryMovementRequest", "productId")]
+    [InlineData("RegisterInventoryMovementRequest", "quantity")]
+    public async Task Document_ShouldDescribePositiveIntegerProperties(
+    string schemaName,
+    string propertyName)
+    {
+        using var document = await GetSwaggerDocumentAsync();
+        var schema = GetRequestSchema(document, schemaName);
+        var property = schema.GetProperty("properties")
+            .GetProperty(propertyName);
+        Assert.Equal("integer",
+            property.GetProperty("type").GetString());
+        Assert.Equal(1,
+            property.GetProperty("minimum").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("/api/v1/categories")]
+    [InlineData("/api/v1/products")]
+    public async Task Document_ShouldDescribePaginationConstraints(
+    string path)
+    {
+        using var document = await GetSwaggerDocumentAsync();
+        var page = GetParameter(document, path, "get", "page")
+            .GetProperty("schema");
+        var pageSize = GetParameter(document, path, "get", "pageSize")
+            .GetProperty("schema");
+        Assert.Equal(1, page.GetProperty("minimum").GetInt32());
+        Assert.Equal(1, page.GetProperty("default").GetInt32());
+        Assert.Equal(1, pageSize.GetProperty("minimum").GetInt32());
+        Assert.Equal(100, pageSize.GetProperty("maximum").GetInt32());
+        Assert.Equal(20, pageSize.GetProperty("default").GetInt32());
+    }
+
     private static void AssertProblemResponse(
         JsonElement responses,
         string status)
@@ -115,6 +197,51 @@ public class SwaggerDocumentationTests
             status, out var response));
         Assert.True(response.GetProperty("content")
             .TryGetProperty("application/problem+json", out _));
+    }
+
+    [Theory]
+    [InlineData("/api/v1/categories/{id}", "get")]
+    [InlineData("/api/v1/categories/{id}", "put")]
+    [InlineData("/api/v1/categories/{id}", "delete")]
+    [InlineData("/api/v1/products/{id}", "get")]
+    [InlineData("/api/v1/products/{id}", "put")]
+    [InlineData("/api/v1/products/{id}", "delete")]
+    public async Task Document_ShouldDescribePositiveRouteIdentifiers(
+    string path,
+    string method)
+    {
+        using var document = await GetSwaggerDocumentAsync();
+        var parameter = GetParameter(document, path, method, "id");
+        Assert.True(parameter.GetProperty("required").GetBoolean());
+        Assert.Equal("path", parameter.GetProperty("in").GetString());
+        Assert.Equal(1, parameter.GetProperty("schema")
+            .GetProperty("minimum").GetInt32());
+    }
+
+    private static JsonElement GetRequestSchema(
+    JsonDocument document,
+    string schemaName)
+    {
+        return document.RootElement
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty(schemaName);
+    }
+
+    private static JsonElement GetParameter(
+        JsonDocument document,
+        string path,
+        string method,
+        string name)
+    {
+        var parameters = document.RootElement
+            .GetProperty("paths")
+            .GetProperty(path)
+            .GetProperty(method)
+            .GetProperty("parameters");
+
+        return Assert.Single(parameters.EnumerateArray(),
+            parameter => parameter.GetProperty("name").GetString() == name);
     }
 
     private static async Task<JsonDocument> GetSwaggerDocumentAsync()

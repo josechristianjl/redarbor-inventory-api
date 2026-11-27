@@ -16,7 +16,18 @@ public static class AuthenticationServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(environment);
-        var allowHttp = environment.IsDevelopment();
+        RegisterJwtAuthentication(
+            services, configuration, environment.IsDevelopment());
+        RegisterAuthorizationPolicy(services);
+
+        return services;
+    }
+
+    private static void RegisterJwtAuthentication(
+        IServiceCollection services,
+        IConfiguration configuration,
+        bool allowHttp)
+    {
         var authority = GetRequiredUrl(
             configuration, "KEYCLOAK_AUTHORITY", allowHttp);
         var issuer = GetRequiredUrl(
@@ -36,9 +47,6 @@ public static class AuthenticationServiceRegistration
                 options.TokenValidationParameters =
                     CreateTokenValidationParameters(issuer, audience);
             });
-        RegisterAuthorizationPolicy(services);
-
-        return services;
     }
 
     private static TokenValidationParameters CreateTokenValidationParameters(

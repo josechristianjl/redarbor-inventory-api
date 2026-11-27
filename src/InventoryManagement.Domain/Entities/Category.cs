@@ -1,5 +1,6 @@
 using InventoryManagement.Domain.Validation;
 using InventoryManagement.Domain.Exceptions;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.Domain.Entities;
 
@@ -25,14 +26,16 @@ public class Category
         IsActive = true;
     }
 
-    public void UpdateDetails(string name, string? description)
+    public void UpdateDetails(CategoryDetails details)
     {
+        ArgumentNullException.ThrowIfNull(details);
         if (!IsActive)
         {
             throw new DomainRuleException(
                 DomainRuleCode.InactiveCategory,
                 "An inactive category cannot be updated.");
         }
+        var (name, description) = details;
         string normalizedName = TextValidation.NormalizeRequired(
             name, MaxNameLength, nameof(name));
         string? normalizedDescription = TextValidation.NormalizeOptional(

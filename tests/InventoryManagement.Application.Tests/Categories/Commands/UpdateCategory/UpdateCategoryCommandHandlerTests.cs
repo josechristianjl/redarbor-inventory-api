@@ -4,6 +4,7 @@ using InventoryManagement.Application.Categories.Commands.UpdateCategory;
 using InventoryManagement.Application.Exceptions;
 using InventoryManagement.Domain.Entities;
 using Moq;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.Application.Tests.Categories.Commands.UpdateCategory;
 
@@ -113,20 +114,18 @@ public class UpdateCategoryCommandHandlerTests
         var expected = new PersistenceRuleException(
             code, "Persistence rule violation.");
         _repository.Setup(repository => repository.UpdateAsync(
-                command.Id,
-                command.Name,
-                command.Description,
-                CancellationToken.None))
+               command.Id,
+               new CategoryDetails(command.Name, command.Description),
+               CancellationToken.None))
             .ThrowsAsync(expected);
         var exception = await Assert.ThrowsAsync<PersistenceRuleException>(() =>
             _handler.HandleAsync(command, CancellationToken.None));
         Assert.Same(expected, exception);
         Assert.Equal(code, exception.Code);
         _repository.Verify(repository => repository.UpdateAsync(
-            command.Id,
-            command.Name,
-            command.Description,
-            CancellationToken.None), Times.Once());
+             command.Id,
+             new CategoryDetails(command.Name, command.Description),
+             CancellationToken.None), Times.Once());
         _repository.VerifyNoOtherCalls();
     }
 
@@ -149,8 +148,7 @@ public class UpdateCategoryCommandHandlerTests
             "Unexpected persistence failure.");
         _repository.Setup(repository => repository.UpdateAsync(
                 command.Id,
-                command.Name,
-                command.Description,
+                new CategoryDetails(command.Name, command.Description),
                 CancellationToken.None))
             .ThrowsAsync(expected);
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -158,8 +156,7 @@ public class UpdateCategoryCommandHandlerTests
         Assert.Same(expected, exception);
         _repository.Verify(repository => repository.UpdateAsync(
             command.Id,
-            command.Name,
-            command.Description,
+            new CategoryDetails(command.Name, command.Description),
             CancellationToken.None), Times.Once());
         _repository.VerifyNoOtherCalls();
     }
@@ -170,15 +167,13 @@ public class UpdateCategoryCommandHandlerTests
         using var cancellation = new CancellationTokenSource();
         _repository.Setup(repository => repository.UpdateAsync(
                 command.Id,
-                command.Name,
-                command.Description,
+                new CategoryDetails(command.Name, command.Description),
                 cancellation.Token))
             .Returns(Task.CompletedTask);
         await _handler.HandleAsync(command, cancellation.Token);
         _repository.Verify(repository => repository.UpdateAsync(
             command.Id,
-            command.Name,
-            command.Description,
+            new CategoryDetails(command.Name, command.Description),
             cancellation.Token), Times.Once());
         _repository.VerifyNoOtherCalls();
     }

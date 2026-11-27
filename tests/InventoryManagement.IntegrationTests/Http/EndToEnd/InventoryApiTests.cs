@@ -112,7 +112,7 @@ public class InventoryApiTests : IClassFixture<ReadRepositoryFixture>
     [InlineData("/health/live")]
     [InlineData("/health/ready")]
     public async Task HealthEndpoint_WithAvailableDatabase_ShouldReturnHealthy(
-    string path)
+        string path)
     {
         using var rsa = RSA.Create(2048);
         await using var factory = new InventoryApiFactory(_database, rsa);

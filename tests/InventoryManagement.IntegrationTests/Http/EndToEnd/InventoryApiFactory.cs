@@ -39,12 +39,10 @@ internal sealed class InventoryApiFactory
                 pair => pair.Key,
                 pair => pair.Value,
                 StringComparer.OrdinalIgnoreCase);
-
         if (databaseName is not null)
         {
             _settings["SQL_SERVER_DATABASE"] = databaseName;
         }
-
         _settings[HostDefaults.EnvironmentKey] =
             Environments.Production;
         _settings["KEYCLOAK_AUTHORITY"] = Issuer;

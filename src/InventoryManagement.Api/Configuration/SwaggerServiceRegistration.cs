@@ -1,5 +1,6 @@
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using InventoryManagement.Api.Documentation;
 
 namespace InventoryManagement.Api.Configuration;
 
@@ -25,6 +26,8 @@ public static class SwaggerServiceRegistration
                 Description = "REST API for managing categories, products and inventory movements."
             });
             ConfigureOAuth2(options, issuer);
+            options.SchemaFilter<InventoryRequestSchemaFilter>();
+            options.ParameterFilter<InventoryParameterFilter>();
         });
 
         return services;

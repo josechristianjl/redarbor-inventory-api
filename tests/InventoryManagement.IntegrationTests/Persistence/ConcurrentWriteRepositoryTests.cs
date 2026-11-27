@@ -121,13 +121,11 @@ public class ConcurrentWriteRepositoryTests
             () => _categories.DeactivateAsync(
                 categoryId, CancellationToken.None));
         AssertSingleSuccess(results);
-
         if (results[0] is null)
         {
             AssertPersistenceFailure(
                 results[1], PersistenceRuleCode.CategoryHasActiveProducts);
         }
-
         await AssertCategoryCreationOutcomeAsync(
             categoryId, sku, results[0]);
     }

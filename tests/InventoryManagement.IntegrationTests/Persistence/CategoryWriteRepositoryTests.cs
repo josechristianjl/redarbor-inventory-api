@@ -4,6 +4,7 @@ using InventoryManagement.Domain.Entities;
 using InventoryManagement.Infrastructure.Persistence.Repositories.Write;
 using InventoryManagement.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
+using InventoryManagement.Domain.Parameters;
 
 namespace InventoryManagement.IntegrationTests.Persistence;
 
@@ -74,7 +75,9 @@ public class CategoryWriteRepositoryTests
         var id = await InsertCategoryAsync(CreateUniqueName());
         var name = CreateUniqueName();
         await repository.UpdateAsync(
-            id, $"  {name}  ", "  Updated description  ",
+            id,
+            new CategoryDetails(
+                $"  {name}  ", "  Updated description  "),
             CancellationToken.None);
         var persisted = await ReadCategoryAsync(id);
         Assert.Equal(id, persisted.Id);
@@ -92,8 +95,11 @@ public class CategoryWriteRepositoryTests
         var id = await InsertCategoryAsync(originalName);
         await InsertCategoryAsync(duplicateName);
         var exception = await Assert.ThrowsAsync<PersistenceRuleException>(() =>
-            repository.UpdateAsync(id, duplicateName.ToUpperInvariant(),
-                "New description", CancellationToken.None));
+            repository.UpdateAsync(
+                id,
+                new CategoryDetails(
+                    duplicateName.ToUpperInvariant(), "New description"),
+                CancellationToken.None));
         Assert.Equal(
             PersistenceRuleCode.DuplicateCategoryName, exception.Code);
         var persisted = await ReadCategoryAsync(id);
@@ -113,7 +119,9 @@ public class CategoryWriteRepositoryTests
             ? await InsertCategoryAsync(CreateUniqueName(), false)
             : int.MaxValue;
         var exception = await Assert.ThrowsAsync<PersistenceRuleException>(() =>
-            repository.UpdateAsync(id, CreateUniqueName(), null,
+            repository.UpdateAsync(
+                id,
+                new CategoryDetails(CreateUniqueName(), null),
                 CancellationToken.None));
         Assert.Equal(PersistenceRuleCode.CategoryNotFound, exception.Code);
     }
@@ -165,6 +173,15 @@ public class CategoryWriteRepositoryTests
         Assert.Equal(PersistenceRuleCode.CategoryNotFound, exception.Code);
     }
 
+    [Fact]
+    public async Task UpdateAsync_WithNullDetails_ShouldThrowException()
+    {
+        var repository = CreateRepository();
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
+            repository.UpdateAsync(
+                1, null!, CancellationToken.None));
+    }
+
     private CategoryWriteRepository CreateRepository()
     {
         return new CategoryWriteRepository(
@@ -193,7 +210,6 @@ public class CategoryWriteRepositoryTests
             .CreateConnectionFactory().OpenAsync(CancellationToken.None);
 
         return await connection.QuerySingleAsync<int>(
-
             sql, new { Name = name, IsActive = isActive });
     }
 

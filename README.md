@@ -81,56 +81,51 @@ The containerized application does not require a locally installed .NET SDK, SQL
 
 ## Quick start — Docker Compose
 
-Clone the repository:
+### 1. Clone the repository
 
-```sh
+```powershell
 git clone https://github.com/josechristianjl/redarbor-inventory-api.git
 cd redarbor-inventory-api
 ```
 
-From the repository root, create a local environment file if one does not already exist.
-
-PowerShell:
+### 2. Generate local credentials
 
 ```powershell
-Copy-Item .env.example .env
+powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\setup.ps1
 ```
 
-Bash:
+The setup script generates five independent, cryptographically secure
+credentials and creates a local `.env` file.
 
-```bash
-cp .env.example .env
-```
+The file opens automatically in Windows Notepad so that the evaluator
+can access the generated credentials.
 
-Configure the five required credentials in `.env`:
+Existing `.env` files are preserved without modification.
+Credentials are never committed to source control.
 
-| Variable | Purpose |
-|---|---|
-| MSSQL_SA_PASSWORD | SQL Server administrator password |
-| SQL_SERVER_PASSWORD | Restricted application database password |
-| KC_BOOTSTRAP_ADMIN_PASSWORD | Initial Keycloak administrator password |
-| KEYCLOAK_SERVICE_CLIENT_SECRET | Confidential OAuth2 client secret |
-| KEYCLOAK_DEMO_USER_PASSWORD | Local demonstration user password |
+### 3. Build and start the system
 
-Use different strong credentials. Single-quoted values in the Compose `.env` file prevent variable interpolation in credentials.
-
-The application database password must contain 8-128 printable ASCII characters without spaces or single quotes. SQL Server password complexity requirements also apply.
-
-Use the default API and Keycloak ports because the imported realm contains explicit Swagger redirect URIs. Keep `ASPNETCORE_ENVIRONMENT=Development` for this local evaluation setup.
-
-Do not commit `.env` or replace existing credentials without planning credential rotation.
-
-Validate the Compose configuration:
-
-```sh
-docker compose config --quiet
-```
-
-Build and start the complete system with one command:
-
-```sh
+```powershell
 docker compose up -d --build
 ```
+
+Docker Compose automatically starts SQL Server, initializes the
+database, imports the Keycloak realm and starts the API.
+
+### 4. Access Swagger
+
+Open http://localhost:8080/swagger/index.html
+
+Click Authorize, select the `inventory.access` scope and authenticate
+using the following credentials:
+
+| Field | Value |
+|---|---|
+| Username | inventory-user |
+| Password | KEYCLOAK_DEMO_USER_PASSWORD from `.env` |
+
+The generated credentials are intended exclusively for local
+development and evaluation, not production deployment.
 
 Check service availability:
 

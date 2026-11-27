@@ -108,6 +108,44 @@ public class InventoryApiTests : IClassFixture<ReadRepositoryFixture>
             documentResponse, HttpStatusCode.NotFound, "NotFound");
     }
 
+    [Theory]
+    [InlineData("/health/live")]
+    [InlineData("/health/ready")]
+    public async Task HealthEndpoint_WithAvailableDatabase_ShouldReturnHealthy(
+    string path)
+    {
+        using var rsa = RSA.Create(2048);
+        await using var factory = new InventoryApiFactory(_database, rsa);
+        using var client = factory.CreateHttpsClient();
+        using var response = await client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(
+            "text/plain", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal("Healthy", body);
+    }
+
+    [Theory]
+    [InlineData("/health/live", HttpStatusCode.OK, "Healthy")]
+    [InlineData("/health/ready", HttpStatusCode.ServiceUnavailable, "Unhealthy")]
+    public async Task HealthEndpoint_WithUnavailableDatabase_ShouldReportExpectedStatus(
+        string path,
+        HttpStatusCode expectedStatus,
+        string expectedBody)
+    {
+        using var rsa = RSA.Create(2048);
+        var databaseName = $"Missing-{Guid.NewGuid():N}";
+        await using var factory =
+            new InventoryApiFactory(_database, rsa, databaseName);
+        using var client = factory.CreateHttpsClient();
+        using var response = await client.GetAsync(path);
+        Assert.Equal(expectedStatus, response.StatusCode);
+        Assert.Equal(
+            "text/plain", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(expectedBody, body);
+    }
+
     private static async Task<int> CreateCategoryAsync(
         HttpClient client,
         string name)

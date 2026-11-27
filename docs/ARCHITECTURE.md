@@ -1,6 +1,6 @@
 # Inventory Management API — Architecture
 
-Status: Candidate-approved architecture baseline v0.2, with domain update v0.3, persistence implementation update v0.4, application implementation update v0.5 and REST API and security implementation update v0.6. Full container deployment and CI/CD remain pending.
+Status: Candidate-approved architecture baseline v0.2, with implementation updates through v0.7, including Domain, Persistence, Application, REST API, OAuth2 and complete local Docker Compose deployment. CI/CD and final delivery validation remain pending.
 Functional baseline: SPEC.md v0.3 (candidate-approved scope; architecture references updated).
 
 ## ADR-001 — Runtime and architecture
@@ -13,6 +13,8 @@ Use explicit commands, queries and typed handlers registered with built-in DI; n
 
 ## ADR-003 — Relational model
 All IDs are int IDENTITY primary keys. Categories: Name nvarchar(150) NOT NULL UNIQUE, Description nvarchar(500) NULL, IsActive bit NOT NULL DEFAULT 1. Products: CategoryId int NOT NULL FK, SKU nvarchar(50) NOT NULL UNIQUE, Name nvarchar(150) NOT NULL, Description nvarchar(500) NULL, Stock int NOT NULL DEFAULT 0 CHECK (Stock >= 0), IsActive bit NOT NULL DEFAULT 1. InventoryMovements: ProductId int NOT NULL FK, Type tinyint NOT NULL CHECK (Type IN (1,2)), Quantity int NOT NULL CHECK (Quantity > 0), CreatedAt datetime2(7) NOT NULL DEFAULT SYSUTCDATETIME(). Entry=1, Exit=2 internally; API accepts strings Entry/Exit only. Explicit case-insensitive collation on unique strings; trim at input boundary. Unique values stay reserved after logical deletion. No cascading deletes. Index Products(CategoryId, IsActive) and InventoryMovements(ProductId, CreatedAt). Use UTC timestamps and serialize as UTC. Add DB checks for nonblank names/SKU. Map SQL uniqueness conflicts to HTTP 409.
+
+Identity values are technical identifiers, not gap-free business folios. Gaps may occur after failed inserts, rollbacks or SQL Server restarts. Identity caching is retained.
 
 ## ADR-004 — Transaction and concurrency
 
@@ -43,13 +45,13 @@ General deadlock retries were deferred after the concurrency verification. This 
 Automatic retries after an uncertain commit are deliberately avoided because they could duplicate inventory movements. Request idempotency is outside the current scope.
 
 ## ADR-005 — OAuth2
-Keycloak is the authorization server; API is a resource server using JWT Bearer. For Swagger use authorization code + PKCE with a public client; for automated smoke tests use client credentials with a confidential client and service account. Configure realm, audience inventory-api and scope inventory.access; enforce signature, issuer, audience, lifetime and required scope. Missing/invalid token -> 401, valid token without permission -> 403. Configure public issuer separately from container-reachable metadata/backchannel if necessary; never disable issuer or signature validation to fix Docker networking. HTTP and Keycloak dev mode only for local evaluation; production requires HTTPS and production Keycloak configuration. No secrets in Git. Realm import and environment-based secret provisioning are part of setup. Verify both flows from a clean Compose environment.
+Keycloak is the authorization server; API is a resource server using JWT Bearer. For Swagger use authorization code + PKCE with a public client; for automated smoke tests use client credentials with a confidential client and service account. Configure realm, audience inventory-api and scope inventory.access; enforce signature, issuer, audience, lifetime and required scope. Missing/invalid token -> 401, valid token without permission -> 403. Configure public issuer separately from container-reachable metadata/backchannel if necessary; never disable issuer or signature validation to fix Docker networking. HTTP and Keycloak dev mode only for local evaluation; production requires HTTPS and production Keycloak configuration. No secrets in Git. Realm import and environment-based secret provisioning are part of setup. Both flows were verified from a clean Compose environment during Phase 8.
 
 ## ADR-006 — Validation and errors
 Use FluentValidation core with explicit invocation in handlers or at the API boundary; avoid duplicate validation. Use domain rules for pure stock invariants and database constraints for persistence invariants. Central exception handling and ProblemDetails with consistent codes; do not expose stack traces or SQL details. Native ILogger; do not log credentials or tokens. Movement POST returns 201 and ID without inventing a GET endpoint or Location URI.
 
 ## ADR-007 — Docker and configuration
-Compose services: api, sqlserver, db-init (one-shot), keycloak. SQL data persisted in a named volume. Health checks and startup ordering ensure schema initialization completes before API is ready. Keycloak readiness and token availability verified during deployment validation. Multi-stage API Dockerfile, non-root runtime where supported. Use .env.example with placeholders, .gitignore for .env, configuration via environment variables. Pin compatible image/package versions during setup; document local debug configuration and commands. No external cloud account needed.
+Compose services: api, sqlserver, db-init (one-shot), keycloak. SQL data persisted in a named volume. Health checks and startup ordering ensure schema initialization completes before API is ready. Keycloak readiness and token availability verified during deployment validation. Multi-stage API Dockerfile, non-root runtime where supported. Use .env.example with placeholders, .gitignore for .env, configuration via environment variables. Pin compatible image/package versions during setup; document local debug configuration and commands. No external cloud account needed. Full local Compose deployment was implemented and verified during Phase 8; see ADR-026 through ADR-029.
 
 ## ADR-008 — Quality and delivery
 xUnit, Moq for application ports when useful, Coverlet for unit coverage, Testcontainers for targeted SQL Server integration tests. TDD sequence: failing test, minimal implementation, refactor. Test business rules, handlers, DB constraints, rollback, concurrent exits, category deletion races, CRUD and authentication. GitHub Actions builds and runs tests when the planned workflow is implemented; integration tests need Docker. Preserve actual test results and coverage, do not fabricate metrics. Follow assessment-specific formatting, English identifiers, one class/enum per file, no commented-out code, short single-purpose methods. README includes setup, debugging, OAuth token examples and Swagger. Document AI prompts and real candidate decisions separately.
@@ -110,7 +112,7 @@ Database initialization is organized into three versioned scripts:
 - 002_create_schema.sql
 - 003_create_permissions.sql
 
-A one-shot db-init container executes the scripts after SQL Server becomes healthy.
+A one-shot db-init container executes the scripts after SQL Server becomes healthy. Phase 8 adds bounded availability checks within the initializer itself; see ADR-027.
 
 Repeated initialization preserves existing data. These scripts initialize the current schema but do not implement general schema migration or drift detection.
 
@@ -242,7 +244,7 @@ Product and category existence checks, uniqueness checks and state-dependent bus
 
 Get-by-ID handlers translate unavailable read results into the existing identifiable not-found exception contract.
 
-Known domain and persistence exceptions propagate to the future API exception handler.
+Known domain and persistence exceptions propagate to the API exception handler implemented during Phase 7.
 
 Cancellation tokens are forwarded to persistence operations.
 
@@ -348,7 +350,7 @@ Updates and logical deletions return HTTP 204 without a response body.
 
 Movement type parsing accepts Entry and Exit using exact case-sensitive string matching.
 
-Program.cs is the composition root and registers controllers, Application, Infrastructure, error handling, Swagger and authentication services.
+Program.cs is the composition root and registers controllers, Application, Infrastructure, error handling, Swagger and authentication services. Health checks were added in Phase 8.
 
 The request pipeline invokes authentication before authorization.
 
@@ -378,7 +380,7 @@ Expected business failures do not require the same diagnostic treatment as unexp
 
 ## ADR-023 — OAuth2 resource server and Keycloak
 
-Status: Implemented and verified against local Keycloak. Complete container networking verification remains pending.
+Status: Implemented and verified against local Keycloak in Phase 7. Complete container networking and both OAuth2 flows were verified in Phase 8; see ADR-028.
 
 Use Keycloak 26.8.2 as the OAuth2 authorization server.
 
@@ -424,7 +426,7 @@ Use Swashbuckle.AspNetCore 11.0.1.
 
 OpenAPI describes the Authorization Code flow and required inventory.access scope.
 
-A global security requirement is appropriate because all current business endpoints use the same authorization policy.
+A global security requirement is appropriate because all current business endpoints use the same authorization policy. The anonymous Phase 8 health endpoints are operational routes rather than business controller operations.
 
 Swagger UI uses the public inventory-swagger client and enables PKCE.
 
@@ -444,7 +446,7 @@ Additional schema metadata could improve client generation and communicate norma
 
 ## ADR-025 — API integration testing and quality baseline
 
-Status: Locally verified on 2026-11-27.
+Status: Locally verified on 2026-11-27 (Phase 7 historical baseline).
 
 Testing is organized into complementary levels:
 
@@ -496,6 +498,124 @@ Additional tests were not introduced solely to achieve 100% coverage.
 
 The candidate executed the tests locally. The assistant inspected the supplied terminal output and Cobertura XML without independently executing the code.
 
+For the latest quality baseline, see ADR-029.
+
+## ADR-026 — API container image and deployment
+
+Status: Implemented and locally verified during Phase 8.
+
+Use a multi-stage Dockerfile with official .NET 10 SDK and ASP.NET Core runtime images.
+
+Restore dependencies using centralized project and package settings before copying the remaining production source.
+
+Publish the API in Release configuration.
+
+The final image excludes the SDK, test projects and local development credentials.
+
+Install curl for container health checks and execute the API under the non-root application user (UID 1654 in the tested image).
+
+Use .dockerignore to exclude local credentials, source-control metadata, build artifacts and test results.
+
+Compose defines four services: sqlserver, db-init, keycloak and api.
+
+The API starts after SQL Server and Keycloak become healthy and db-init completes successfully. The API container health check queries /health/ready.
+
+The API receives only its required database credential, not SQL Server administrator credentials or Keycloak client secrets.
+
+Published service ports are restricted to the local loopback interface.
+
+HTTPS redirection may be explicitly disabled only in Development through API_ENABLE_HTTPS_REDIRECTION for the local HTTP container deployment. Production TLS configuration is a separate responsibility.
+
+## ADR-027 — Liveness, readiness and dependency recovery
+
+Status: Implemented and locally verified during Phase 8.
+
+Use native ASP.NET Core health checks without additional NuGet dependencies.
+
+The anonymous /health/live endpoint verifies API process availability without querying external dependencies.
+
+The anonymous /health/ready endpoint uses the existing SqlConnectionFactory and restricted application database account to execute SELECT 1.
+
+Health responses do not expose internal exception details.
+
+The SQL readiness check has a five-second cancellation timeout.
+
+Readiness checks database connectivity, not the entire schema or Keycloak availability. Keycloak retains its independent container readiness check.
+
+The database initializer uses bounded availability checks before initializing master and InventoryManagement.
+
+Each availability check allows up to 30 attempts, with three-second connection and query timeouts and a two-second delay between attempts.
+
+The initializer does not retry arbitrary schema writes or uncertain inventory transactions.
+
+Controlled SQL Server interruption verified HTTP 200 liveness, HTTP 503 readiness and subsequent readiness recovery without restarting the API.
+
+## ADR-028 — Container networking and persistent infrastructure
+
+Status: Implemented and locally verified during Phase 8.
+
+The API uses sqlserver:1433 for internal database communication.
+
+Keycloak metadata is retrieved through keycloak:8080.
+
+The public issuer remains http://localhost:8081/realms/inventory.
+
+Keycloak dynamic backchannel configuration provides container-reachable token and JWKS endpoints while preserving the public issuer. The browser-facing authorization endpoint remains public.
+
+External and internal signing-key identifiers and RSA public components were compared successfully.
+
+Both OAuth2 flows were verified against the containerized API.
+
+Named volumes preserve SQL Server data and Keycloak realm information.
+
+Clean deployment was verified using a separate Compose project with independent volumes. Default local ports and existing credentials were reused; this was not a fresh checkout on an independent machine.
+
+Container recreation preserved inventory records and Keycloak signing keys.
+
+The local deployment is not a production high-availability architecture.
+
+## ADR-029 — Container verification and operational limitations
+
+Status: Locally verified on 2026-11-27.
+
+The complete regression contains 534 automated test cases:
+
+- Domain: 95.
+- Application: 142.
+- Integration: 297.
+
+Four health endpoint cases were added during Phase 8. The reported Release build and full regression succeeded with zero failures or skipped tests.
+
+Integration-test coverage:
+
+| Assembly | Lines | Branches |
+|---|---:|---:|
+| API | 99.46% | 89.04% |
+| Application | 100.00% | 88.46% |
+| Domain | 86.50% | 75.00% |
+| Infrastructure | 98.15% | 91.66% |
+| Aggregate | 97.84% | 88.10% |
+
+The aggregate represents 1,544 of 1,578 instrumented lines and 200 of 227 branches. Percentages follow the Cobertura report.
+
+Both new health-check components reached complete instrumented line coverage. Coverage is not merged across the complete test suite.
+
+SQL Server CU28 exhibited exit code 137 after Docker stop timeouts. OOMKilled was false.
+
+The observed startup script behavior is consistent with upstream issue https://github.com/microsoft/mssql-docker/issues/968.
+
+The native SQL SHUTDOWN procedure was tested and returned exit code 255, followed by successful system recovery. The precise cause of exit code 255 was not established.
+
+DBCC CHECKDB reported zero allocation and consistency errors after the earlier forced shutdown tests. This does not guarantee that future forced shutdowns are safe.
+
+The existing SQL Server image is retained, and the limitation is documented rather than modifying upstream startup scripts.
+
+Local dependency auditing reported no known vulnerable NuGet packages from the configured audit sources.
+
+ASP.NET Core Data Protection keys are not persisted or additionally encrypted in the API container. Current JWT authentication does not rely on server-side authentication cookies; future features that require Data Protection need separate key-management decisions.
+
+Container image vulnerability scanning and production infrastructure hardening are outside the completed verification scope.
+
 ## Repository layout
 
 - src/InventoryManagement.Domain
@@ -520,6 +640,7 @@ The candidate executed the tests locally. The assistant inspected the supplied t
   - Contracts
   - Controllers
   - ErrorHandling
+  - HealthChecks
 - tests/InventoryManagement.Domain.Tests
 - tests/InventoryManagement.Application.Tests
 - tests/InventoryManagement.IntegrationTests
@@ -538,38 +659,29 @@ The candidate executed the tests locally. The assistant inspected the supplied t
 - infrastructure/keycloak/inventory-realm.json
 - docs/
 
-Root configuration includes .env.example, .gitignore, .gitattributes, docker-compose.yml, README.md and central SDK/build/package settings.
+Root configuration includes .env.example, .gitignore, .gitattributes, Dockerfile, .dockerignore, docker-compose.yml, README.md and central SDK/build/package settings.
 
 Planned additions:
 
-- API Dockerfile and Docker build exclusions.
-- Complete API service configuration in Docker Compose.
 - GitHub Actions workflow.
 - Candidate decision-making answers in docs/DECISIONS.md.
 
 ## Pending validation
 
-The Phase 4 domain and Phase 5 persistence commits were statically reviewed on GitHub.
+Phases 4, 5 and 6 were statically reviewed after publication. The Phase 6 application commit is cc6b32f7c57db6793b86584f04f11ba62acb030b.
 
-The Phase 6 application implementation was statically reviewed after publication of commit cc6b32f7c57db6793b86584f04f11ba62acb030b.
+Phase 7 was statically reviewed after publication of commit afad9b292058cefbdbb9e0173d67e2ed94915767.
 
-Phase 7 introduced REST endpoints, centralized error handling, OAuth2, Swagger and complete-host integration tests.
+Phase 8 has been implemented and locally verified through automated regression, clean container deployment, real OAuth2 smoke checks, persistence, service recovery and database consistency checks.
 
-The candidate reported successful local execution of all 530 automated tests.
-
-Manual verification covered CRUD operations, inventory entries and exits, logical deletion, persisted movement history and stock reconciliation.
-
-The Phase 7 source changes remain subject to static review after publication of the corresponding commit.
+Phase 8 source changes remain subject to static review after publication.
 
 Remaining work:
 
-- API container image and full Docker Compose deployment.
-- Clean-start verification and service startup ordering.
-- Container-to-Keycloak metadata and signing-key retrieval.
-- Complete containerized authentication smoke checks.
 - Final OpenAPI contract review.
-- CI/CD.
+- GitHub Actions CI/CD.
 - Candidate decision-making answers.
-- Final deployment and delivery documentation.
+- Final repository and deployment validation.
+- Final delivery documentation.
 
-The measured test coverage and successful local checks do not establish complete production readiness.
+Successful local execution and coverage measurements do not establish complete production readiness.

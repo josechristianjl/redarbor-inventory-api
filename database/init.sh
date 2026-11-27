@@ -17,11 +17,43 @@ SQLCMD="/opt/mssql-tools18/bin/sqlcmd"
 
 export SQLCMDPASSWORD="$MSSQL_SA_PASSWORD"
 
+wait_for_database() {
+    local database="$1"
+    local max_attempts=30
+    local attempt
+
+    for ((attempt=1; attempt<=max_attempts; attempt++)); do
+        if "$SQLCMD" -S sqlserver,1433 -U sa -C -b \
+            -l 3 -t 3 \
+            -d "$database" \
+            -Q "SELECT 1;" \
+            > /dev/null 2>&1; then
+            echo "Database '$database' is available."
+            return 0
+        fi
+
+        echo "Waiting for database '$database' ($attempt/$max_attempts)..."
+
+        if ((attempt < max_attempts)); then
+            sleep 2
+        fi
+    done
+
+    echo "Database '$database' did not become available." >&2
+    return 1
+}
+
+echo "Waiting for SQL Server..."
+
+wait_for_database master
+
 echo "Creating database..."
 
 "$SQLCMD" -S sqlserver,1433 -U sa -C -b \
     -d master \
     -i /database/scripts/001_create_database.sql
+
+wait_for_database InventoryManagement
 
 echo "Creating database schema..."
 

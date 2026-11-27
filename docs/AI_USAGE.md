@@ -1,6 +1,6 @@
 # AI Usage Log
 
-Status: Updated through local REST API, OAuth2, Swagger and host integration validation, Phase 7. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
+Status: Updated through local container deployment, persistence, recovery and security validation, Phase 8. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
 
 ## Session 1 — Assessment review and specification (2026-11-23)
 Tool: ChatGPT.
@@ -267,7 +267,7 @@ The assistant did not independently execute the local tests.
 
 The persistence implementation was subsequently statically reviewed on GitHub after publication of commit 3c553e35e5e32848c8bb17915089a82b4ad0e777. The assistant inspected the committed changes, implementation files, test scenarios and documentation. No independent build or test execution was performed during that review.
 
-Application use cases, HTTP endpoints, OAuth2, full container deployment, API integration tests and CI/CD remain pending.
+Application use cases, HTTP endpoints, OAuth2, full container deployment, API integration tests and CI/CD remained pending at this milestone.
 
 The assessment's decision-making answers must reflect the candidate's actual professional experience and will be documented separately.
 
@@ -278,10 +278,6 @@ Tool: ChatGPT.
 ### Main prompts and collaboration
 
 The candidate requested continuation into Phase 6 after the persistence implementation and its remote review.
-
-Original prompt:
-
-"Perfecto. Gracias. Comencemos entonces con la fase 6."
 
 Subsequent prompts confirmed incremental RED/GREEN results, refactoring regressions and full solution test executions.
 
@@ -423,7 +419,7 @@ Phase 6 results are based on candidate-executed local tests, explicit confirmati
 
 The assistant did not independently execute these tests. The Phase 6 implementation was subsequently statically reviewed on GitHub after publication of commit cc6b32f7c57db6793b86584f04f11ba62acb030b.
 
-Program.cs integration, HTTP endpoints, centralized error responses, OAuth2, complete Docker Compose deployment, API integration tests and CI/CD remain pending.
+Program.cs integration, HTTP endpoints, centralized error responses, OAuth2, complete Docker Compose deployment, API integration tests and CI/CD remained pending at this milestone.
 
 The candidate's professional decision-making answers remain a separate submission requirement and must reflect actual experience.
 
@@ -696,12 +692,227 @@ The assistant did not independently compile or execute the Phase 7 implementatio
 
 The reported results originate from candidate-executed local tests, explicit confirmations and supplied terminal and coverage output.
 
-The Phase 7 source changes remain subject to static review after publication.
+Phase 7 source changes were subsequently statically reviewed after publication of commit afad9b292058cefbdbb9e0173d67e2ed94915767. This was not independent execution.
 
 Automated JWT tests use controlled OpenID Connect metadata rather than querying the actual Keycloak instance.
 
 Actual OAuth2 communication was verified separately through local smoke tests.
 
-Complete API container deployment, clean Compose startup, container-network authentication, CI/CD and final OpenAPI contract review remain pending.
+Complete API container deployment, clean Compose startup, container-network authentication, CI/CD and final OpenAPI contract review remained pending at this milestone.
 
 The assessment's professional decision-making answers remain a separate requirement and must reflect actual candidate experiences.
+
+## Session 8 — Docker deployment, persistence and recovery
+
+Date: 2026-11-27.
+
+Tool: ChatGPT.
+
+### Main prompts and collaboration
+
+The candidate requested continuation into Phase 8:
+
+"Gracias. Comencemos con la fase 8 entonces."
+
+The candidate implemented the proposed Docker configuration, health checks and initialization improvements locally using Visual Studio, Warp, Docker Desktop and SQL Server Management Studio.
+
+The assistant provided implementation instructions, test scenarios, troubleshooting guidance and static analysis.
+
+The candidate supplied terminal output, database screenshots, Swagger results and coverage data.
+
+### Specification-first development
+
+Phase 8 implemented the existing deployment requirements from SPEC.md v0.3.
+
+No new business requirements were introduced.
+
+The deployment acceptance criteria included automatic initialization, authenticated API availability, persisted data and reproducible local startup. Health endpoints support operational verification without adding business operations.
+
+### AI proposals and implementation decisions
+
+| Proposal | Outcome and rationale |
+|---|---|
+| Multi-stage API Dockerfile | Implemented to separate compilation from runtime. |
+| Non-root API execution | Implemented and verified with UID 1654. |
+| Native ASP.NET Core health checks | Implemented without additional NuGet packages. |
+| Separate liveness and readiness endpoints | Implemented to distinguish process availability from SQL connectivity. |
+| Compose startup dependencies | Implemented to prevent API startup before successful initialization. |
+| Development-only HTTP exception | Implemented through explicit configuration without disabling JWT validation. |
+| Restricted container credentials | Implemented and verified. |
+| Dynamic Keycloak backchannel | Verified without weakening JWT validation. |
+| Independent clean deployment | Implemented using a separate Compose project and volumes. |
+| Bounded database availability retries | Added after the candidate discovered a startup failure. |
+| Retain SQL Server CU28 | Assistant recommended retaining the tested image and documenting its limitation rather than modifying upstream startup scripts. |
+| Data Protection configuration | Assistant recommended documenting the warnings instead of hiding them or adding unrelated key management. Current JWT authentication does not rely on server-side authentication cookies. |
+
+These rationales describe technical decisions proposed and exercised during the collaboration; they are not independently stated personal reasoning from the candidate.
+
+### TDD evidence
+
+The candidate added four full-host integration test cases before implementing the health endpoints.
+
+| Scenario | Expected response |
+|---|---|
+| Liveness with available database | 200 |
+| Readiness with available database | 200 |
+| Liveness with unavailable database | 200 |
+| Readiness with unavailable database | 503 |
+
+The candidate confirmed four expected RED failures followed by four GREEN successes.
+
+The complete host test suite increased from 13 to 17 cases.
+
+The total automated regression increased from 530 to 534 cases.
+
+### Corrections and candidate discoveries
+
+The candidate independently stopped and restarted containers through Docker Desktop.
+
+This exposed a recurring database initialization failure when SQL Server was not yet available.
+
+The initial AI-proposed startup configuration depended too heavily on Compose dependency ordering.
+
+The database initializer was modified to perform bounded availability checks before schema initialization, with up to 30 attempts per database, three-second connection and query timeouts and two seconds between attempts.
+
+A subsequent controlled interruption confirmed that initialization waited for SQL Server and completed successfully after recovery. The supplied output included six failed availability attempts for master and one for InventoryManagement before success.
+
+The candidate also identified gaps in SQL Server IDENTITY values following service restart.
+
+The assistant explained identity caching as a likely cause and why technical identifiers do not require gap-free numbering. The exact cause of each individual identifier gap was not established.
+
+No identity reseeding or manual identifier generation was introduced.
+
+### Container deployment verification
+
+The API image was built and published successfully for Linux locally.
+
+The candidate verified:
+
+- Runtime execution without root privileges.
+- Absence of the .NET SDK in the final image.
+- Successful four-service Compose startup.
+- SQL Server and Keycloak health checks.
+- Successful one-shot database initialization.
+- Anonymous API health endpoints.
+- Protection of business endpoints and real authenticated requests.
+- Internal and external OpenID Connect discovery.
+- Matching RSA public signing keys.
+- Client Credentials and Authorization Code with PKCE.
+- Inventory writes, business conflicts and stock reconciliation.
+- Loopback-only published ports and isolation of administrator and OAuth2 client credentials from the API container.
+
+Client Credentials smoke checks returned the following responses:
+
+| Scenario | HTTP status |
+|---|---:|
+| No token | 401 |
+| Malformed token | 401 |
+| Manipulated signature | 401 |
+| Valid token without scope | 403 |
+| Valid token with inventory.access | 200 |
+
+Interactive Swagger verification also confirmed authorized category and product queries and HTTP 401 after removing authorization.
+
+### Clean deployment and persistence
+
+A separate Compose project was created using independent named volumes.
+
+Database initialization and Keycloak realm import completed without manual configuration.
+
+The new database was initially empty.
+
+An authenticated category creation succeeded.
+
+The original environment was restored, and its existing inventory records remained intact.
+
+The category created in the isolated environment did not appear in the original database.
+
+Container recreation subsequently preserved SQL Server records and Keycloak signing keys.
+
+The clean deployment reused the local checkout, images, credentials and default ports. It verified initialization with new volumes, not a fresh checkout on an independent machine.
+
+### Recovery verification
+
+SQL Server was intentionally stopped while the API continued running.
+
+The candidate verified:
+
+- Liveness remained HTTP 200.
+- Readiness returned HTTP 503.
+- Database initialization waited for SQL availability.
+- Readiness returned to HTTP 200 without restarting the API.
+- Authenticated product retrieval recovered successfully.
+
+Final inventory reconciliation confirmed that both test products had zero persisted stock, zero calculated stock and three movements each.
+
+All four test categories and both test products were logically deleted while retaining the six historical movements.
+
+### SQL Server shutdown investigation
+
+Docker stop returned exit code 137 after the configured shutdown timeout expired.
+
+Docker reported OOMKilled=false.
+
+The assistant inspected candidate-supplied startup script and process information and identified behavior consistent with upstream issue https://github.com/microsoft/mssql-docker/issues/968.
+
+The first DBCC CHECKDB attempt failed because the query session used the restricted inventory_app account even though Object Explorer displayed an administrative connection. The assistant clarified that the command must be run in an authorized administrative query session. No additional permissions were granted to the application account.
+
+The candidate verified database integrity through DBCC CHECKDB, with zero allocation errors and zero consistency errors.
+
+A native SQL SHUTDOWN request was also tested after stopping the API.
+
+The shutdown returned exit code 255, rather than the initially anticipated code 0.
+
+The exact reason for exit code 255 was not independently established.
+
+The system recovered successfully, with healthy services, db-init exit code 0 and HTTP 200 readiness.
+
+### Final local verification
+
+| Metric | Result |
+|---|---:|
+| Domain tests | 95 passed |
+| Application tests | 142 passed |
+| Integration tests | 297 passed |
+| Total tests | 534 passed |
+| Failed tests | 0 |
+| Skipped tests | 0 |
+| Release build duration | 16.4 seconds |
+| Regression duration | 91.6 seconds |
+| Integration coverage execution | 80 seconds |
+
+The local NuGet vulnerability audit reported no vulnerable packages across the seven projects using the configured audit sources. This is not a container image vulnerability audit.
+
+### Integration coverage
+
+| Assembly | Lines | Branches |
+|---|---:|---:|
+| API | 99.46% | 89.04% |
+| Application | 100.00% | 88.46% |
+| Domain | 86.50% | 75.00% |
+| Infrastructure | 98.15% | 91.66% |
+| Aggregate | 97.84% | 88.10% |
+
+The candidate-supplied Cobertura report contains 1,544 covered lines out of 1,578 and 200 covered branches out of 227. Percentages follow the rates reported in the XML.
+
+Both newly introduced health check components reported complete instrumented line coverage. SqlServerHealthCheck reported all four instrumented branches covered.
+
+These measurements represent integration tests, not merged coverage of the complete 534-test suite. Manual deployment verification does not increase this measured coverage.
+
+The assistant recommended not adding artificial tests solely to reach 100% coverage. Remaining host configuration branches and final OpenAPI validation can be evaluated during the final review.
+
+### Remaining limitations
+
+The assistant did not independently compile, deploy or execute the application.
+
+Results originate from candidate-executed local tests, supplied output and explicit confirmations.
+
+Phase 8 source changes remain subject to static review after publication.
+
+The local deployment uses development-oriented identity-provider configuration and loopback-bound HTTP endpoints.
+
+SQL Server CU28 has a documented shutdown limitation. Data Protection warnings remain visible; production key management has not been implemented.
+
+Container image vulnerability scanning, production hardening, CI/CD and final OpenAPI contract validation remain pending.
+
+The professional decision-making answers must reflect the candidate's actual experience.

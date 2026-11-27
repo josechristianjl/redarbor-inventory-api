@@ -24,7 +24,10 @@ RESTful inventory management API built with .NET 10, Clean Architecture, CQRS, S
 | OAuth2 authentication and authorization | Implemented and locally verified |
 | Swagger and Authorization Code with PKCE | Implemented and locally verified |
 | Full API host integration tests | Completed |
-| Full Docker Compose deployment | Pending |
+| Full Docker Compose deployment | Implemented and locally verified |
+| Clean deployment | Verified |
+| Health checks | Implemented and locally verified |
+| Container persistence and recovery | Verified |
 | CI/CD | Pending |
 
 ## Architecture
@@ -34,7 +37,7 @@ The solution follows Clean Architecture with explicit CQRS responsibilities.
 - Domain: entities, business rules and stock invariants.
 - Application: commands, queries, handlers, validators and persistence abstractions.
 - Infrastructure: SQL Server, EF Core, Dapper and transactional persistence.
-- API: ASP.NET Core controllers, dependency composition, JWT authentication, authorization, Swagger and centralized error handling.
+- API: ASP.NET Core controllers, dependency composition, JWT authentication, authorization, Swagger, centralized error handling and health checks.
 
 EF Core handles reads using projections and AsNoTracking.
 
@@ -62,13 +65,28 @@ Keycloak acts as the OAuth2 authorization server. The API acts as a protected re
 
 ## Prerequisites
 
-- .NET 10 SDK
-- Docker Desktop or compatible Docker Engine
-- Docker Compose V2
-- Visual Studio 2026 (optional IDE)
-- SQL Server Management Studio (optional database administration)
+For containerized execution:
 
-## Local infrastructure setup
+- Docker Desktop or compatible Docker Engine with Linux containers.
+- Docker Compose V2 with health-based dependency and `--wait` support.
+- Available local ports: 8080, 8081 and 14330.
+
+For local development and automated tests:
+
+- .NET 10 SDK.
+- Visual Studio 2026 (optional IDE).
+- SQL Server Management Studio (optional database administration).
+
+The containerized application does not require a locally installed .NET SDK, SQL Server or Keycloak.
+
+## Quick start — Docker Compose
+
+Clone the repository:
+
+```sh
+git clone https://github.com/josechristianjl/redarbor-inventory-api.git
+cd redarbor-inventory-api
+```
 
 From the repository root, create a local environment file if one does not already exist.
 
@@ -78,7 +96,13 @@ PowerShell:
 Copy-Item .env.example .env
 ```
 
-Configure the required credentials in `.env`:
+Bash:
+
+```bash
+cp .env.example .env
+```
+
+Configure the five required credentials in `.env`:
 
 | Variable | Purpose |
 |---|---|
@@ -88,55 +112,173 @@ Configure the required credentials in `.env`:
 | KEYCLOAK_SERVICE_CLIENT_SECRET | Confidential OAuth2 client secret |
 | KEYCLOAK_DEMO_USER_PASSWORD | Local demonstration user password |
 
-Use different strong credentials.
+Use different strong credentials. Single-quoted values in the Compose `.env` file prevent variable interpolation in credentials.
 
-Database initialization requires passwords between 8 and 128 printable ASCII characters, without spaces or single quotes. SQL Server password complexity requirements also apply.
+The application database password must contain 8-128 printable ASCII characters without spaces or single quotes. SQL Server password complexity requirements also apply.
+
+Use the default API and Keycloak ports because the imported realm contains explicit Swagger redirect URIs. Keep `ASPNETCORE_ENVIRONMENT=Development` for this local evaluation setup.
 
 Do not commit `.env` or replace existing credentials without planning credential rotation.
 
-Start SQL Server and initialize the database:
+Validate the Compose configuration:
 
 ```sh
-docker compose up -d --wait sqlserver
-docker compose run --rm --no-deps db-init
+docker compose config --quiet
 ```
 
-Start Keycloak:
+Build and start the complete system with one command:
 
 ```sh
-docker compose up -d --wait keycloak
+docker compose up -d --build
+```
+
+Check service availability:
+
+```sh
 docker compose ps -a
 ```
 
-The initialization process creates:
+Expected service states after startup completes:
 
-- InventoryManagement database.
-- Categories, Products and InventoryMovements tables.
-- Primary keys, foreign keys, unique constraints and check constraints.
-- The inventory_app login and restricted database user.
+| Service | Expected state |
+|---|---|
+| sqlserver | Running and healthy |
+| db-init | Exited with code 0 |
+| keycloak | Running and healthy |
+| api | Running and healthy |
 
-Database initialization scripts can be executed repeatedly without deleting existing records. They are not a general schema migration engine and do not automatically rotate existing credentials.
+The database initializer is a one-shot service. Its successful termination is expected.
 
-Keycloak imports the inventory realm on initial startup. Existing realms are not overwritten by subsequent imports.
+Database initialization automatically creates the database, tables, constraints, indexes and restricted application database user.
 
-### Local service addresses
+Keycloak automatically imports the inventory realm, OAuth2 clients, scopes and demonstration user on initial startup.
+
+No manual database creation or Keycloak configuration is required.
+
+### Containerized service addresses
 
 | Service | Address |
 |---|---|
+| API | http://localhost:8080 |
+| Swagger UI | http://localhost:8080/swagger/index.html |
+| OpenAPI document | http://localhost:8080/swagger/v1/swagger.json |
+| Liveness | http://localhost:8080/health/live |
+| Readiness | http://localhost:8080/health/ready |
+| Keycloak | http://localhost:8081 |
+| Keycloak realm | inventory |
 | SQL Server | 127.0.0.1,14330 |
 | SQL database | InventoryManagement |
 | Application SQL user | inventory_app |
-| Keycloak | http://localhost:8081 |
-| Keycloak realm | inventory |
-| API HTTPS | https://localhost:7227 |
-| API HTTP | http://localhost:5236 |
-| Swagger UI | https://localhost:7227/swagger/index.html |
 
-SQL Server and Keycloak data are stored in named Docker volumes.
+All published service ports are bound to the local loopback interface.
 
-Do not execute `docker compose down -v` unless intentional deletion of the persisted database and identity-provider data is required.
+### Health checks
+
+| Endpoint | Responsibility |
+|---|---|
+| GET /health/live | Verifies that the API process responds |
+| GET /health/ready | Verifies SQL Server connectivity using the application account |
+
+Both endpoints are anonymous and return plain-text health status without exposing database credentials or internal exception details.
+
+```sh
+curl http://localhost:8080/health/live
+curl http://localhost:8080/health/ready
+```
+
+On Windows PowerShell, use `curl.exe` to invoke curl rather than a shell alias.
+
+Expected response: `Healthy`, with HTTP 200.
+
+During the controlled SQL Server outage, liveness remained HTTP 200 while readiness returned HTTP 503. Readiness returned HTTP 200 after SQL Server recovered, without restarting the API.
+
+Readiness does not independently validate the complete database schema or Keycloak availability.
+
+All eleven business endpoints continue to require OAuth2 authentication and the required authorization scope.
+
+### Persistence and service lifecycle
+
+SQL Server and Keycloak use separate named Docker volumes.
+
+Repeated database initialization preserves existing records. The SQL scripts are initialization scripts rather than a general schema migration engine.
+
+Existing Keycloak realms are not overwritten automatically. Changing credentials in `.env` does not automatically rotate credentials already stored in persistent services.
+
+Start existing services:
+
+```sh
+docker compose up -d --wait --wait-timeout 180
+```
+
+Inspect application logs:
+
+```sh
+docker compose logs --tail=100 api
+```
+
+Inspect initialization logs:
+
+```sh
+docker compose logs --tail=100 db-init
+```
+
+Stop services (see the known SQL Server shutdown limitation below):
+
+```sh
+docker compose stop
+```
+
+Remove containers and the project network while preserving named volumes:
+
+```sh
+docker compose down
+```
+
+Never use `docker compose down -v` unless intentional deletion of the persisted database and identity-provider data is required.
+
+Prefer Compose startup commands over independently starting all containers from Docker Desktop, because Compose evaluates service dependency conditions. The initializer also performs bounded database availability checks to tolerate startup delays.
+
+### Known SQL Server shutdown limitation
+
+The tested SQL Server 2022 CU28 image (`2022-CU28-ubuntu-22.04`) exhibited forced termination with exit code 137 when the Docker stop timeout expired, including a 60-second timeout.
+
+Inspection of the image startup script and process tree identified behavior consistent with the following upstream issue:
+
+https://github.com/microsoft/mssql-docker/issues/968
+
+Docker reported `OOMKilled=false`.
+
+An alternative local maintenance procedure was verified:
+
+1. Stop the API using `docker compose stop api` (and stop any separate local API instance).
+2. Connect to SQL Server using an authorized administrative account, such as `sa` for this local evaluation.
+3. Execute `USE master;` followed by `SHUTDOWN;` in SSMS. Do not use `WITH NOWAIT`.
+4. Restart the system using `docker compose up -d --wait --wait-timeout 180` and confirm service health.
+
+The tested SHUTDOWN operation returned exit code 255, not zero. SQL Server acknowledged the shutdown request, and the complete system recovered successfully. The precise reason for this exit code was not established.
+
+DBCC CHECKDB reported zero allocation errors and zero consistency errors after the earlier forced shutdown tests.
+
+The image remains unchanged. This limitation must not be interpreted as proof that forced shutdowns are safe.
 
 ## Build and run locally
+
+For development outside the API container, stop the containerized API if it is running, and start its dependencies:
+
+```sh
+docker compose stop api
+docker compose up -d --wait --wait-timeout 180 sqlserver keycloak db-init
+```
+
+Verify that SQL Server and Keycloak are healthy and that db-init has completed with exit code 0.
+
+The Visual Studio HTTPS profile uses the following addresses:
+
+| Service | Address |
+|---|---|
+| API HTTPS | https://localhost:7227 |
+| API HTTP | http://localhost:5236 |
+| Swagger | https://localhost:7227/swagger/index.html |
 
 The local `.env` file is consumed by Docker Compose. ASP.NET Core does not automatically load it when running directly from Visual Studio or the .NET CLI.
 
@@ -201,7 +343,7 @@ The configured token lifetime is 300 seconds, with a 30-second validation clock 
 
 ### Swagger — Authorization Code with PKCE
 
-1. Open Swagger UI.
+1. Open Swagger UI at http://localhost:8080/swagger/index.html (Docker) or https://localhost:7227/swagger/index.html (local HTTPS profile).
 2. Select Authorize.
 3. Use client ID `inventory-swagger`.
 4. Leave the client secret empty.
@@ -241,7 +383,7 @@ try {
 
     Invoke-RestMethod `
         -Method Get `
-        -Uri "https://localhost:7227/api/v1/categories" `
+        -Uri "http://localhost:8080/api/v1/categories" `
         -Headers @{
             Authorization = "Bearer $($token.access_token)"
         }
@@ -251,6 +393,8 @@ finally {
         -ErrorAction SilentlyContinue
 }
 ```
+
+When running the API through the local HTTPS profile, use `https://localhost:7227/api/v1/categories` instead.
 
 Do not publish access tokens or client secrets in logs, screenshots or source control.
 
@@ -364,6 +508,8 @@ Stock, active state, movement timestamps and generated identifiers are not writa
 - Deactivation is logical and preserves inventory history.
 - Stock changes and movement insertion occur within the same transaction.
 
+Identifiers are technical keys generated by SQL Server and are not required to be gap-free.
+
 ### Error responses
 
 Errors use the `application/problem+json` media type and identifiable application error codes.
@@ -423,7 +569,7 @@ Actual Keycloak authentication has been verified separately through local smoke 
 
 The automated tests do not modify the local development database.
 
-### Quality baseline — Phase 7
+### Quality baseline — Phase 8
 
 Local Release execution reported on 2026-11-27:
 
@@ -431,14 +577,20 @@ Local Release execution reported on 2026-11-27:
 |---|---:|
 | Domain.Tests | 95 |
 | Application.Tests | 142 |
-| IntegrationTests | 293 |
-| Total | 530 |
+| IntegrationTests | 297 |
+| Total | 534 |
 | Failed | 0 |
 | Skipped | 0 |
 
-Complete regression duration: 83.9 seconds.
+Release build duration: 16.4 seconds.
 
-Phase 7 additionally included 30 manual functional and database verification checks.
+Complete regression duration: 91.6 seconds.
+
+Integration coverage execution: 297 tests passed in 80 seconds.
+
+Four additional health endpoint test cases were implemented during Phase 8 using the actual API host and isolated SQL Server infrastructure. The Phase 7 baseline was 530 automated tests and 30 manual functional and database verification checks.
+
+Manual container deployment and recovery checks are recorded separately and are not included in the automated test count.
 
 ### Coverage
 
@@ -463,10 +615,17 @@ Measured coverage:
 | Phase 7 integration tests | Domain | 86.50% | 75.00% |
 | Phase 7 integration tests | Infrastructure | 97.54% | 90.62% |
 | Phase 7 integration tests | Aggregate | 97.60% | 87.67% |
+| Phase 8 integration tests | API | 99.46% | 89.04% |
+| Phase 8 integration tests | Application | 100.00% | 88.46% |
+| Phase 8 integration tests | Domain | 86.50% | 75.00% |
+| Phase 8 integration tests | Infrastructure | 98.15% | 91.66% |
+| Phase 8 integration tests | Aggregate | 97.84% | 88.10% |
 
-The Phase 7 aggregate covers 1,506 of 1,543 instrumented lines and 192 of 219 branches.
+The Phase 7 integration aggregate covers 1,506 of 1,543 instrumented lines and 192 of 219 branches.
 
-These are separate test-run measurements, not merged coverage for the complete 530-test suite.
+The Phase 8 integration aggregate covers 1,544 of 1,578 instrumented lines and 200 of 227 branches.
+
+These are separate test-run measurements, not merged coverage for the complete 534-test suite. Percentages follow the reported Cobertura rates.
 
 Generated coverage reports are excluded from version control.
 
@@ -486,6 +645,7 @@ Generated coverage reports are excluded from version control.
 - Invalid authentication configuration.
 - Complete HTTP inventory workflow with real SQL persistence.
 - Swagger disabled in Production.
+- Liveness and SQL readiness with available and unavailable database configurations.
 
 Seven concurrency cases were additionally executed ten consecutive times during Phase 5, with all 70 executions passing.
 
@@ -493,11 +653,25 @@ These are repeated executions, not additional distinct test cases or a load test
 
 ## Docker deployment status
 
-SQL Server, database initialization and Keycloak are configured and locally verified.
+The complete four-service Docker Compose environment has been implemented and locally verified.
 
-The API currently runs directly through the .NET host.
+Verified scenarios include:
 
-The API Dockerfile, complete Compose startup, container networking verification and CI/CD remain pending.
+- Multi-stage Linux image construction with a non-root API runtime.
+- Automatic database initialization and realm import.
+- Startup from new isolated named volumes.
+- Internal OpenID Connect metadata and public signing-key retrieval.
+- Client Credentials and Authorization Code with PKCE.
+- Authenticated inventory reads and transactional writes.
+- Inventory stock reconciliation and logical deletion.
+- Container recreation with preservation of SQL Server data and Keycloak signing keys.
+- API liveness during SQL Server unavailability.
+- Readiness recovery without restarting the API.
+- Bounded database initialization retries.
+- Database consistency verification using DBCC CHECKDB.
+- Local NuGet vulnerability audit with no reported vulnerable packages.
+
+CI/CD and final delivery validation remain pending.
 
 ## Documentation
 
@@ -516,4 +690,8 @@ The API Dockerfile, complete Compose startup, container networking verification 
 - Request idempotency is outside the current scope.
 - Count and page retrieval do not guarantee snapshot consistency under concurrent writes.
 - OpenAPI schema constraints may not express every normalized-input validation rule; the functional specification and server-side validation remain authoritative.
-- Full containerized deployment and CI/CD verification remain pending.
+- ASP.NET Core Data Protection keys are not persisted or additionally encrypted in the local API container. Current JWT authentication does not depend on server-side authentication cookies.
+- SQL Server CU28 has a verified local shutdown limitation documented above.
+- Container image vulnerability scanning has not been completed.
+- Docker images and development credentials are intended for controlled local evaluation, not production deployment.
+- CI/CD and final delivery validation remain pending.

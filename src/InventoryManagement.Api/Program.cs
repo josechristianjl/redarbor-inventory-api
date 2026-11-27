@@ -10,6 +10,7 @@ builder.Services.AddInventoryPersistence(builder.Configuration);
 builder.Services.AddInventoryErrorHandling();
 builder.Services.AddInventoryAuthentication(
     builder.Configuration, builder.Environment);
+builder.Services.AddInventoryHealthChecks();
 var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -17,8 +18,13 @@ if (app.Environment.IsDevelopment())
 {
     app.UseInventorySwagger();
 }
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment() ||
+    app.Configuration.GetValue("API_ENABLE_HTTPS_REDIRECTION", true))
+{
+    app.UseHttpsRedirection();
+}
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapInventoryHealthChecks();
 app.Run();

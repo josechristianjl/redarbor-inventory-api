@@ -1,0 +1,48 @@
+# Version control
+.git
+.github
+.gitignore
+.gitattributes
+
+# Local environment and credentials
+.env
+.env.*
+**/.env
+**/.env.*
+**/secrets.json
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+**/*.pfx
+**/*.pem
+**/*.key
+
+# Visual Studio
+.vs
+**/.vs
+**/*.user
+**/*.suo
+
+# Build artifacts
+**/bin
+**/obj
+
+# Test and coverage artifacts
+tests
+**/TestResults
+**/coverage
+**/coverage-report
+**/*.coverage
+**/*.coveragexml
+
+# External service configuration
+database
+infrastructure
+docker-compose.yml
+
+# Documentation
+docs
+README.md
+
+# Logs
+**/logs
+**/*.log

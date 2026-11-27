@@ -2,84 +2,17 @@
 
 Technical assessment for Redarbor — Senior Developer.
 
-RESTful inventory management API built with .NET 10, Clean Architecture, CQRS, SQL Server, Entity Framework Core for reads and Dapper for writes.
-
-## Development status
-
-| Component | Status |
-|---|---|
-| Functional specification | Completed |
-| Architecture and technical design | Completed |
-| Solution and project configuration | Completed |
-| Domain model and business rules | Completed |
-| Database schema and initialization | Completed |
-| EF Core read repositories | Completed |
-| Dapper write repositories | Completed |
-| Inventory transactions and rollback | Completed |
-| Concurrency verification | Completed |
-| Application use cases and validation | Completed |
-| Dependency registration and composition | Completed |
-| REST API endpoints | Implemented and locally verified |
-| Centralized HTTP error handling | Implemented and locally verified |
-| OAuth2 authentication and authorization | Implemented and locally verified |
-| Swagger and Authorization Code with PKCE | Implemented and locally verified |
-| Full API host integration tests | Completed |
-| Full Docker Compose deployment | Implemented and locally verified |
-| Clean deployment | Verified |
-| Health checks | Implemented and locally verified |
-| Container persistence and recovery | Verified |
-| CI/CD | Pending |
-
-## Architecture
-
-The solution follows Clean Architecture with explicit CQRS responsibilities.
-
-- Domain: entities, business rules and stock invariants.
-- Application: commands, queries, handlers, validators and persistence abstractions.
-- Infrastructure: SQL Server, EF Core, Dapper and transactional persistence.
-- API: ASP.NET Core controllers, dependency composition, JWT authentication, authorization, Swagger, centralized error handling and health checks.
-
-EF Core handles reads using projections and AsNoTracking.
-
-Dapper handles writes using parameterized SQL, explicit transactions and consistent locking protocols.
-
-SQL Server provides relational constraints, unique indexes and restricted application permissions.
-
-Keycloak acts as the OAuth2 authorization server. The API acts as a protected resource server.
-
-## Technology stack
-
-- .NET 10 LTS
-- ASP.NET Core
-- Entity Framework Core 10
-- Dapper
-- SQL Server 2022
-- Keycloak 26.8.2
-- FluentValidation
-- Swashbuckle.AspNetCore 11.0.1
-- xUnit
-- Moq
-- Testcontainers
-- Coverlet
-- Docker Compose
+REST API for managing categories, products and inventory movements. Built with .NET 10, Clean Architecture and explicit CQRS, using Entity Framework Core for reads and Dapper for transactional writes. SQL Server provides persistence and Keycloak provides OAuth2 authentication and authorization.
 
 ## Prerequisites
 
-For containerized execution:
+- Windows with PowerShell and Git.
+- Docker Desktop running.
+- Available local ports: 8080 (API), 8081 (Keycloak) and 14330 (SQL Server).
 
-- Docker Desktop or compatible Docker Engine with Linux containers.
-- Docker Compose V2 with health-based dependency and `--wait` support.
-- Available local ports: 8080, 8081 and 14330.
+The .NET 10 SDK is only required for local development and automated tests. Visual Studio is optional and is used below for debugging. No local SQL Server or Keycloak installation is required.
 
-For local development and automated tests:
-
-- .NET 10 SDK.
-- Visual Studio 2026 (optional IDE).
-- SQL Server Management Studio (optional database administration).
-
-The containerized application does not require a locally installed .NET SDK, SQL Server or Keycloak.
-
-## Quick start — Docker Compose
+## Quick start
 
 ### 1. Clone the repository
 
@@ -88,202 +21,160 @@ git clone https://github.com/josechristianjl/redarbor-inventory-api.git
 cd redarbor-inventory-api
 ```
 
-### 2. Generate local credentials
+### 2. Generate credentials
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\setup.ps1
 ```
 
-The setup script generates five independent, cryptographically secure
-credentials and creates a local `.env` file.
+The script generates five independent, cryptographically random credentials in `.env` and opens the file in Windows Notepad. No manual configuration is needed. Keep the file available for the login step. An existing `.env` is opened without modification; it is not regenerated.
 
-The file opens automatically in Windows Notepad so that the evaluator
-can access the generated credentials.
-
-Existing `.env` files are preserved without modification.
-Credentials are never committed to source control.
-
-### 3. Build and start the system
+### 3. Start the application
 
 ```powershell
 docker compose up -d --build
 ```
 
-Docker Compose automatically starts SQL Server, initializes the
-database, imports the Keycloak realm and starts the API.
+Docker Compose builds the API, starts SQL Server and Keycloak, initializes the database with a restricted application account, imports the OAuth2 realm and starts the API when its dependencies are ready.
 
-### 4. Access Swagger
+Check startup with `docker compose ps -a`. The `api`, `sqlserver` and `keycloak` services should be healthy; `db-init` should exit with code 0.
 
-Open http://localhost:8080/swagger/index.html
+### 4. Open Swagger and sign in
 
-Click Authorize, select the `inventory.access` scope and authenticate
-using the following credentials:
+Open [Swagger UI](http://localhost:8080/swagger/index.html).
 
-| Field | Value |
-|---|---|
-| Username | inventory-user |
-| Password | KEYCLOAK_DEMO_USER_PASSWORD from `.env` |
+1. Click **Authorize**.
+2. Use client ID `inventory-swagger`, leave the client secret empty and select the `inventory.access` scope.
+3. Click **Authorize** in the dialog to open the Keycloak sign-in page.
+4. Enter username `inventory-user` and the value of `KEYCLOAK_DEMO_USER_PASSWORD` from `.env` (without the surrounding single quotes).
+5. Click **Sign In**. After returning to Swagger, close the authorization dialog.
 
-The generated credentials are intended exclusively for local
-development and evaluation, not production deployment.
+Swagger uses OAuth2 Authorization Code with PKCE. No manual Keycloak client or user configuration is required. Access tokens expire after 5 minutes. If a request returns `401 Unauthorized` because the token expired, click **Authorize**, log out and authorize again. Keycloak may reuse its browser session.
 
-Check service availability:
+## Try the API
 
-```sh
-docker compose ps -a
+Use **Try it out → Execute** in Swagger. All eleven business endpoints require authorization. Without a token, `GET /api/v1/categories` returns `401 Unauthorized`; after sign-in it returns `200 OK`. On a fresh database, the collection is empty.
+
+### 1. Create a category
+
+`POST /api/v1/categories`
+
+```json
+{
+  "name": "Electronics",
+  "description": "Electronic products"
+}
 ```
 
-Expected service states after startup completes:
+Expected: `201 Created`. Save the `id` from the response.
 
-| Service | Expected state |
-|---|---|
-| sqlserver | Running and healthy |
-| db-init | Exited with code 0 |
-| keycloak | Running and healthy |
-| api | Running and healthy |
+### 2. Create a product
 
-The database initializer is a one-shot service. Its successful termination is expected.
+`POST /api/v1/products`
 
-Database initialization automatically creates the database, tables, constraints, indexes and restricted application database user.
-
-Keycloak automatically imports the inventory realm, OAuth2 clients, scopes and demonstration user on initial startup.
-
-No manual database creation or Keycloak configuration is required.
-
-### Containerized service addresses
-
-| Service | Address |
-|---|---|
-| API | http://localhost:8080 |
-| Swagger UI | http://localhost:8080/swagger/index.html |
-| OpenAPI document | http://localhost:8080/swagger/v1/swagger.json |
-| Liveness | http://localhost:8080/health/live |
-| Readiness | http://localhost:8080/health/ready |
-| Keycloak | http://localhost:8081 |
-| Keycloak realm | inventory |
-| SQL Server | 127.0.0.1,14330 |
-| SQL database | InventoryManagement |
-| Application SQL user | inventory_app |
-
-All published service ports are bound to the local loopback interface.
-
-### Health checks
-
-| Endpoint | Responsibility |
-|---|---|
-| GET /health/live | Verifies that the API process responds |
-| GET /health/ready | Verifies SQL Server connectivity using the application account |
-
-Both endpoints are anonymous and return plain-text health status without exposing database credentials or internal exception details.
-
-```sh
-curl http://localhost:8080/health/live
-curl http://localhost:8080/health/ready
+```json
+{
+  "sku": "LAPTOP-001",
+  "name": "Laptop",
+  "categoryId": 1,
+  "description": "Portable computer"
+}
 ```
 
-On Windows PowerShell, use `curl.exe` to invoke curl rather than a shell alias.
+Replace `categoryId` with the actual category ID. Expected: `201 Created`. Save the product `id`. Its initial stock is zero.
 
-Expected response: `Healthy`, with HTTP 200.
+### 3. Register an inventory entry
 
-During the controlled SQL Server outage, liveness remained HTTP 200 while readiness returned HTTP 503. Readiness returned HTTP 200 after SQL Server recovered, without restarting the API.
+`POST /api/v1/inventory-movements`
 
-Readiness does not independently validate the complete database schema or Keycloak availability.
-
-All eleven business endpoints continue to require OAuth2 authentication and the required authorization scope.
-
-### Persistence and service lifecycle
-
-SQL Server and Keycloak use separate named Docker volumes.
-
-Repeated database initialization preserves existing records. The SQL scripts are initialization scripts rather than a general schema migration engine.
-
-Existing Keycloak realms are not overwritten automatically. Changing credentials in `.env` does not automatically rotate credentials already stored in persistent services.
-
-Start existing services:
-
-```sh
-docker compose up -d --wait --wait-timeout 180
+```json
+{
+  "productId": 1,
+  "type": "Entry",
+  "quantity": 10
+}
 ```
 
-Inspect application logs:
+Replace `productId` with the actual product ID. Expected: `201 Created`.
 
-```sh
-docker compose logs --tail=100 api
+### 4. Register an inventory exit
+
+Use the same endpoint and product ID:
+
+```json
+{
+  "productId": 1,
+  "type": "Exit",
+  "quantity": 4
+}
 ```
 
-Inspect initialization logs:
+Expected: `201 Created`. Call `GET /api/v1/products/{id}` using the product ID to verify `stock: 6`. An exit of 7 units should return `409 Conflict` and leave stock unchanged.
 
-```sh
-docker compose logs --tail=100 db-init
+To test deletion, first register an exit of the remaining 6 units, delete the product, then delete the category. Both DELETE requests should return `204 No Content`. Deletion is logical and preserves inventory history. Use unique names and SKUs if repeating the example.
+
+## API reference
+
+Base path: `/api/v1`. The full OpenAPI contract is available through [Swagger](http://localhost:8080/swagger/index.html).
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/categories` | 200 |
+| GET | `/categories/{id}` | 200 |
+| POST | `/categories` | 201 |
+| PUT | `/categories/{id}` | 204 |
+| DELETE | `/categories/{id}` | 204 |
+| GET | `/products` | 200 |
+| GET | `/products/{id}` | 200 |
+| POST | `/products` | 201 |
+| PUT | `/products/{id}` | 204 |
+| DELETE | `/products/{id}` | 204 |
+| POST | `/inventory-movements` | 201 |
+
+Collection endpoints accept `page` (default 1) and `pageSize` (default 20, maximum 100), ordered by ID. PUT uses the same body as the corresponding POST. Category and product creation return an ID and a Location header; movement creation returns an ID only.
+
+Products require active categories. Stock changes only through movements, cannot become negative or overflow, and must be zero before product deletion. Categories cannot be deleted while they contain active products. Names (categories) and SKUs (products) remain unique even after deletion. Stock updates and movement insertion are atomic. See the [functional specification](docs/SPEC.md) for validation rules and full contracts.
+
+Errors use `application/problem+json` with application error codes and trace IDs: 400 invalid input, 401 invalid or missing authentication, 403 missing scope, 404 missing/inactive resource, 405 unsupported method, 409 conflict, 415 unsupported media type, and 500 unexpected error.
+
+### Service-to-service authentication
+
+For non-interactive clients, use OAuth2 Client Credentials with client ID `inventory-service` and the value of `KEYCLOAK_SERVICE_CLIENT_SECRET` from `.env`.
+
+```powershell
+$secret = [System.Net.NetworkCredential]::new('', (Read-Host 'Service client secret' -AsSecureString)).Password
+try {
+    $token = Invoke-RestMethod -Method Post `
+        -Uri 'http://localhost:8081/realms/inventory/protocol/openid-connect/token' `
+        -ContentType 'application/x-www-form-urlencoded' `
+        -Body @{
+            grant_type = 'client_credentials'
+            client_id = 'inventory-service'
+            client_secret = $secret
+            scope = 'inventory.access'
+        }
+    Invoke-RestMethod -Uri 'http://localhost:8080/api/v1/categories' `
+        -Headers @{ Authorization = "Bearer $($token.access_token)" }
+}
+finally {
+    Remove-Variable -Name secret,token -ErrorAction SilentlyContinue
+}
 ```
 
-Stop services (see the known SQL Server shutdown limitation below):
+## Local development and debugging
 
-```sh
-docker compose stop
-```
+Install the .NET 10 SDK and open `InventoryManagement.slnx` in Visual Studio. Complete the credential generation step first if `.env` does not exist. From the repository root, run:
 
-Remove containers and the project network while preserving named volumes:
-
-```sh
-docker compose down
-```
-
-Never use `docker compose down -v` unless intentional deletion of the persisted database and identity-provider data is required.
-
-Prefer Compose startup commands over independently starting all containers from Docker Desktop, because Compose evaluates service dependency conditions. The initializer also performs bounded database availability checks to tolerate startup delays.
-
-### Known SQL Server shutdown limitation
-
-The tested SQL Server 2022 CU28 image (`2022-CU28-ubuntu-22.04`) exhibited forced termination with exit code 137 when the Docker stop timeout expired, including a 60-second timeout.
-
-Inspection of the image startup script and process tree identified behavior consistent with the following upstream issue:
-
-https://github.com/microsoft/mssql-docker/issues/968
-
-Docker reported `OOMKilled=false`.
-
-An alternative local maintenance procedure was verified:
-
-1. Stop the API using `docker compose stop api` (and stop any separate local API instance).
-2. Connect to SQL Server using an authorized administrative account, such as `sa` for this local evaluation.
-3. Execute `USE master;` followed by `SHUTDOWN;` in SSMS. Do not use `WITH NOWAIT`.
-4. Restart the system using `docker compose up -d --wait --wait-timeout 180` and confirm service health.
-
-The tested SHUTDOWN operation returned exit code 255, not zero. SQL Server acknowledged the shutdown request, and the complete system recovered successfully. The precise reason for this exit code was not established.
-
-DBCC CHECKDB reported zero allocation errors and zero consistency errors after the earlier forced shutdown tests.
-
-The image remains unchanged. This limitation must not be interpreted as proof that forced shutdowns are safe.
-
-## Build and run locally
-
-For development outside the API container, stop the containerized API if it is running, and start its dependencies:
-
-```sh
+```powershell
 docker compose stop api
 docker compose up -d --wait --wait-timeout 180 sqlserver keycloak db-init
 ```
 
-Verify that SQL Server and Keycloak are healthy and that db-init has completed with exit code 0.
+The containerized API is stopped; SQL Server and Keycloak remain available. The `.env` file is consumed by Docker Compose, not automatically loaded by ASP.NET Core outside Docker.
 
-The Visual Studio HTTPS profile uses the following addresses:
-
-| Service | Address |
-|---|---|
-| API HTTPS | https://localhost:7227 |
-| API HTTP | http://localhost:5236 |
-| Swagger | https://localhost:7227/swagger/index.html |
-
-The local `.env` file is consumed by Docker Compose. ASP.NET Core does not automatically load it when running directly from Visual Studio or the .NET CLI.
-
-Open `InventoryManagement.slnx` in Visual Studio.
-
-Set `InventoryManagement.Api` as the startup project.
-
-Right-click the API project and select Manage User Secrets.
-
-Configure the following local settings:
+1. Set `InventoryManagement.Api` as the startup project.
+2. Right-click the API project and select **Manage User Secrets**.
+3. Configure the following values, replacing the password placeholder with `SQL_SERVER_PASSWORD` from `.env`.
 
 ```json
 {
@@ -300,393 +191,87 @@ Configure the following local settings:
 }
 ```
 
-Replace the password placeholder with the actual application database password.
+4. Select the HTTPS launch profile and press F5. Set breakpoints in controllers, handlers or repositories and repeat an authenticated Swagger request at https://localhost:7227/swagger/index.html using the same login steps.
 
-Select the HTTPS launch profile and press F5 to run and debug the API.
+Alternatively, after configuring User Secrets, run `dotnet run --project src/InventoryManagement.Api --launch-profile https`. If needed, trust the local development certificate with `dotnet dev-certs https --trust`.
 
-Alternatively, after configuring the same User Secrets:
+## Automated tests
 
-```sh
-dotnet restore InventoryManagement.slnx
-dotnet build InventoryManagement.slnx
-dotnet run --project src/InventoryManagement.Api --launch-profile https
-```
-
-If the local ASP.NET Core development certificate is not trusted:
-
-```sh
-dotnet dev-certs https --trust
-```
-
-Swagger is enabled only in the Development environment.
-
-For debugging, place breakpoints in controllers, application handlers or persistence repositories and execute the relevant authenticated HTTP request through Swagger.
-
-## Authentication and authorization
-
-All eleven business endpoints require a valid JWT access token containing the `inventory.access` scope.
-
-The API validates:
-
-- Token signature and RS256 signing algorithm.
-- Exact issuer.
-- Expected audience.
-- Token expiration and validity period.
-- Required authorization scope.
-
-The configured token lifetime is 300 seconds, with a 30-second validation clock skew.
-
-### Swagger — Authorization Code with PKCE
-
-1. Open Swagger UI at http://localhost:8080/swagger/index.html (Docker) or https://localhost:7227/swagger/index.html (local HTTPS profile).
-2. Select Authorize.
-3. Use client ID `inventory-swagger`.
-4. Leave the client secret empty.
-5. Select the `inventory.access` scope.
-6. Authenticate using `inventory-user` and the configured demonstration user password.
-7. Execute an authorized endpoint.
-
-Keycloak may reuse an existing SSO session.
-
-If an access token expires, remove the current Swagger authorization and authorize again.
-
-Swagger Logout removes its stored authorization but does not necessarily terminate the Keycloak SSO session.
-
-### Service authentication — Client Credentials
-
-The confidential OAuth2 client is `inventory-service`.
-
-PowerShell example:
+From the repository root, with the .NET 10 SDK and Docker Desktop running:
 
 ```powershell
-$clientSecret = [System.Net.NetworkCredential]::new(
-    "",
-    (Read-Host "Keycloak service client secret" -AsSecureString)
-).Password
-
-try {
-    $token = Invoke-RestMethod `
-        -Method Post `
-        -Uri "http://localhost:8081/realms/inventory/protocol/openid-connect/token" `
-        -ContentType "application/x-www-form-urlencoded" `
-        -Body @{
-            grant_type = "client_credentials"
-            client_id = "inventory-service"
-            client_secret = $clientSecret
-            scope = "inventory.access"
-        }
-
-    Invoke-RestMethod `
-        -Method Get `
-        -Uri "http://localhost:8080/api/v1/categories" `
-        -Headers @{
-            Authorization = "Bearer $($token.access_token)"
-        }
-}
-finally {
-    Remove-Variable -Name clientSecret,token `
-        -ErrorAction SilentlyContinue
-}
+dotnet build InventoryManagement.slnx --configuration Release --no-incremental
+dotnet test InventoryManagement.slnx --configuration Release --no-build
 ```
 
-When running the API through the local HTTPS profile, use `https://localhost:7227/api/v1/categories` instead.
+Domain and Application unit tests do not require Docker. Integration tests use Testcontainers with isolated SQL Server databases, the actual API host where applicable, and controlled JWT signing keys. They do not require a running Compose stack or Keycloak and do not modify the local development database. Real Keycloak flows are checked separately through Swagger and Client Credentials.
 
-Do not publish access tokens or client secrets in logs, screenshots or source control.
-
-## REST API
-
-Base route: `/api/v1`.
-
-| Method | Endpoint | Success |
-|---|---|---|
-| GET | /categories | 200 OK |
-| GET | /categories/{id} | 200 OK |
-| POST | /categories | 201 Created |
-| PUT | /categories/{id} | 204 No Content |
-| DELETE | /categories/{id} | 204 No Content |
-| GET | /products | 200 OK |
-| GET | /products/{id} | 200 OK |
-| POST | /products | 201 Created |
-| PUT | /products/{id} | 204 No Content |
-| DELETE | /products/{id} | 204 No Content |
-| POST | /inventory-movements | 201 Created |
-
-Category and product creation return the generated identifier and a Location header.
-
-Inventory movement registration returns the generated identifier without a Location header because no movement lookup endpoint is defined.
-
-### Pagination
-
-Category and product collection endpoints support:
-
-| Parameter | Default | Constraint |
-|---|---:|---|
-| page | 1 | Positive integer |
-| pageSize | 20 | Between 1 and 100 |
-
-Results are ordered by identifier.
-
-Response structure:
-
-```json
-{
-  "items": [],
-  "page": 1,
-  "pageSize": 20,
-  "totalCount": 0
-}
-```
-
-Only active categories and products are exposed.
-
-### Request examples
-
-Create or update a category:
-
-```json
-{
-  "name": "Electronics",
-  "description": "Electronic devices"
-}
-```
-
-Create or update a product:
-
-```json
-{
-  "sku": "LAPTOP-001",
-  "name": "Laptop",
-  "categoryId": 1,
-  "description": "Portable computer"
-}
-```
-
-Register an inventory entry:
-
-```json
-{
-  "productId": 1,
-  "type": "Entry",
-  "quantity": 10
-}
-```
-
-Register an inventory exit:
-
-```json
-{
-  "productId": 1,
-  "type": "Exit",
-  "quantity": 4
-}
-```
-
-Replace example identifiers with existing resource identifiers.
-
-Category names and product names must not exceed 150 characters after trimming. Product SKU values must not exceed 50 characters. Optional descriptions must not exceed 500 characters after trimming.
-
-Movement types are case-sensitive and accept only `Entry` or `Exit`. Quantities and resource identifiers must be positive integers.
-
-Unknown request properties are rejected.
-
-Stock, active state, movement timestamps and generated identifiers are not writable through request DTOs.
-
-### Business rules
-
-- Products start with zero stock.
-- Stock changes only through inventory movements.
-- Products require an active category.
-- Stock cannot become negative or exceed the supported integer range.
-- Category names and product SKUs are unique, including inactive records.
-- Products with stock cannot be deactivated.
-- Categories with active products cannot be deactivated.
-- Deactivation is logical and preserves inventory history.
-- Stock changes and movement insertion occur within the same transaction.
-
-Identifiers are technical keys generated by SQL Server and are not required to be gap-free.
-
-### Error responses
-
-Errors use the `application/problem+json` media type and identifiable application error codes.
-
-| Status | Meaning |
-|---|---|
-| 400 | Invalid request or validation failure |
-| 401 | Missing or invalid authentication |
-| 403 | Authenticated caller without the required scope |
-| 404 | Missing or inactive resource |
-| 405 | Unsupported HTTP method for the route |
-| 409 | Business rule or uniqueness conflict |
-| 415 | Unsupported media type |
-| 500 | Unexpected server failure |
-
-Error responses include a trace identifier. Validation errors include field-level information.
-
-Internal exception details, stack traces and SQL errors are not returned to consumers.
-
-## Tests
-
-Docker must be running before executing SQL Server integration tests.
-
-Build the complete solution:
-
-```sh
-dotnet build --configuration Release --no-incremental
-```
-
-Run all tests:
-
-```sh
-dotnet test --configuration Release --no-build
-```
-
-Run individual test projects:
-
-```sh
-dotnet test tests/InventoryManagement.Domain.Tests/InventoryManagement.Domain.Tests.csproj --configuration Release
-
-dotnet test tests/InventoryManagement.Application.Tests/InventoryManagement.Application.Tests.csproj --configuration Release
-
-dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj --configuration Release
-```
-
-Domain and Application unit tests do not require Docker.
-
-Integration tests use Testcontainers to create isolated SQL Server instances with the project database initialization scripts.
-
-HTTP controller tests use controlled repository dependencies.
-
-Full-host integration tests use WebApplicationFactory, the actual API entry point, application services, EF Core, Dapper and isolated SQL Server instances.
-
-JWT integration tests use controlled RSA signing keys and static OpenID Connect metadata. They do not require a running Keycloak instance.
-
-Actual Keycloak authentication has been verified separately through local smoke checks and Swagger.
-
-The automated tests do not modify the local development database.
-
-### Quality baseline — Phase 8
-
-Local Release execution reported on 2026-11-27:
+Latest reported local regression (2026-11-27):
 
 | Test project | Passed |
 |---|---:|
-| Domain.Tests | 95 |
+| Domain.Tests | 96 |
 | Application.Tests | 142 |
-| IntegrationTests | 297 |
-| Total | 534 |
-| Failed | 0 |
-| Skipped | 0 |
+| IntegrationTests | 313 |
+| **Total** | **551** |
 
-Release build duration: 16.4 seconds.
+Failed: 0. Skipped: 0. Test duration: 86.2 seconds.
 
-Complete regression duration: 91.6 seconds.
+Generate coverage reports independently:
 
-Integration coverage execution: 297 tests passed in 80 seconds.
-
-Four additional health endpoint test cases were implemented during Phase 8 using the actual API host and isolated SQL Server infrastructure. The Phase 7 baseline was 530 automated tests and 30 manual functional and database verification checks.
-
-Manual container deployment and recovery checks are recorded separately and are not included in the automated test count.
-
-### Coverage
-
-Generate separate coverage reports:
-
-```sh
-dotnet test tests/InventoryManagement.Domain.Tests/InventoryManagement.Domain.Tests.csproj --configuration Release --collect:"XPlat Code Coverage" --results-directory "./TestResults/DomainCoverage"
-
-dotnet test tests/InventoryManagement.Application.Tests/InventoryManagement.Application.Tests.csproj --configuration Release --collect:"XPlat Code Coverage" --results-directory "./TestResults/ApplicationCoverage"
-
-dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj --configuration Release --collect:"XPlat Code Coverage" --results-directory "./TestResults/IntegrationCoverage"
+```powershell
+dotnet test tests/InventoryManagement.Domain.Tests/InventoryManagement.Domain.Tests.csproj -c Release --collect "XPlat Code Coverage" --results-directory TestResults/DomainCoverage
+dotnet test tests/InventoryManagement.Application.Tests/InventoryManagement.Application.Tests.csproj -c Release --collect "XPlat Code Coverage" --results-directory TestResults/ApplicationCoverage
+dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj -c Release --collect "XPlat Code Coverage" --results-directory TestResults/IntegrationCoverage
 ```
 
-Measured coverage:
+Earlier measured coverage (before the latest refactorings):
 
-| Test execution | Assembly | Lines | Branches |
+| Test execution | Scope | Lines | Branches |
 |---|---|---:|---:|
-| Phase 5 Domain unit tests | Domain | 96.31% | 100.00% |
-| Phase 6 Application unit tests | Application | 96.70% | 88.46% |
-| Phase 7 integration tests | API | 99.43% | 89.23% |
-| Phase 7 integration tests | Application | 100.00% | 88.46% |
-| Phase 7 integration tests | Domain | 86.50% | 75.00% |
-| Phase 7 integration tests | Infrastructure | 97.54% | 90.62% |
-| Phase 7 integration tests | Aggregate | 97.60% | 87.67% |
-| Phase 8 integration tests | API | 99.46% | 89.04% |
-| Phase 8 integration tests | Application | 100.00% | 88.46% |
-| Phase 8 integration tests | Domain | 86.50% | 75.00% |
-| Phase 8 integration tests | Infrastructure | 98.15% | 91.66% |
-| Phase 8 integration tests | Aggregate | 97.84% | 88.10% |
+| Domain unit tests (Phase 5) | Domain | 96.31% | 100.00% |
+| Application unit tests (Phase 6) | Application | 96.70% | 88.46% |
+| Integration tests (Phase 8) | Aggregate | 97.84% | 88.10% |
 
-The Phase 7 integration aggregate covers 1,506 of 1,543 instrumented lines and 192 of 219 branches.
+These are historical, separate Cobertura measurements, not merged coverage for the current 551 tests. Generated reports are ignored by Git.
 
-The Phase 8 integration aggregate covers 1,544 of 1,578 instrumented lines and 200 of 227 branches.
+## Docker operations
 
-These are separate test-run measurements, not merged coverage for the complete 534-test suite. Percentages follow the reported Cobertura rates.
+If Docker Desktop is configured for Windows containers, switch to Linux containers before starting the project.
 
-Generated coverage reports are excluded from version control.
+| Service | Local address |
+|---|---|
+| API / Swagger | http://localhost:8080/swagger/index.html |
+| OpenAPI JSON | http://localhost:8080/swagger/v1/swagger.json |
+| Keycloak | http://localhost:8081 (realm `inventory`) |
+| SQL Server | `127.0.0.1,14330` (database `InventoryManagement`) |
+| Liveness | http://localhost:8080/health/live |
+| Readiness | http://localhost:8080/health/ready |
 
-### Verified scenarios
+Both health endpoints are anonymous. Liveness checks the API process; readiness checks SQL connectivity (not the full schema or Keycloak). Healthy responses are HTTP 200; unavailable SQL yields readiness HTTP 503.
 
-- Domain invariants and application input validation.
-- Dependency composition and service lifetimes.
-- CRUD operations and deterministic pagination.
-- SQL Server constraints and restricted database permissions.
-- Inventory consistency and transaction rollback.
-- Concurrent stock movements and conflicting deletion operations.
-- Centralized HTTP error responses.
-- JWT signature, issuer, audience and lifetime validation.
-- Missing authentication and insufficient authorization scope.
-- Protection of all eleven business endpoints.
-- Swagger OAuth2 configuration and PKCE initialization.
-- Invalid authentication configuration.
-- Complete HTTP inventory workflow with real SQL persistence.
-- Swagger disabled in Production.
-- Liveness and SQL readiness with available and unavailable database configurations.
+```powershell
+docker compose ps -a
+docker compose logs --tail=100 api
+docker compose logs --tail=100 db-init
+docker compose up -d --wait --wait-timeout 180
+```
 
-Seven concurrency cases were additionally executed ten consecutive times during Phase 5, with all 70 executions passing.
+`docker compose stop` stops services; `docker compose down` removes containers and networks while preserving named volumes. Do not use `down -v` unless intentional deletion of all database and Keycloak data is required.
 
-These are repeated executions, not additional distinct test cases or a load test.
+**Known SQL Server limitation:** the tested 2022 CU28 image could terminate with exit code 137 on Docker stop timeout ([upstream issue](https://github.com/microsoft/mssql-docker/issues/968), consistent with observed behavior). For controlled local maintenance, stop the API first, connect to SQL Server as an authorized administrator (e.g. `sa` in this local environment), and execute `USE master; SHUTDOWN;` without `WITH NOWAIT`. This procedure was tested with exit code 255 (cause not established) and successful recovery on Compose restart. Do not assume forced shutdown is safe. See the architecture document for technical context.
 
-## Docker deployment status
+## Architecture and security
 
-The complete four-service Docker Compose environment has been implemented and locally verified.
+The solution contains Domain (business invariants), Application (commands, queries and validation), Infrastructure (EF Core reads and parameterized Dapper writes with explicit transactions), and API (REST, JWT validation and Swagger). Main dependencies include SQL Server 2022, Keycloak 26.8.2, FluentValidation, xUnit, Moq, Testcontainers and Coverlet.
 
-Verified scenarios include:
+The API validates JWT signature (RS256), exact issuer and audience, expiration and `inventory.access` scope. All published service ports bind to loopback. Swagger is enabled only in Development. The API container runs as a non-root user.
 
-- Multi-stage Linux image construction with a non-root API runtime.
-- Automatic database initialization and realm import.
-- Startup from new isolated named volumes.
-- Internal OpenID Connect metadata and public signing-key retrieval.
-- Client Credentials and Authorization Code with PKCE.
-- Authenticated inventory reads and transactional writes.
-- Inventory stock reconciliation and logical deletion.
-- Container recreation with preservation of SQL Server data and Keycloak signing keys.
-- API liveness during SQL Server unavailability.
-- Readiness recovery without restarting the API.
-- Bounded database initialization retries.
-- Database consistency verification using DBCC CHECKDB.
-- Local NuGet vulnerability audit with no reported vulnerable packages.
+Generated credentials and User Secrets are local plaintext configuration, not encrypted production secret stores. Never commit `.env`, passwords or tokens. Keep existing credentials consistent with persistent SQL Server and Keycloak data; regenerating a file does not rotate those credentials. The development-mode Keycloak, local HTTP, trusted SQL certificate and shared API scope are intended for local evaluation only. Production hardening, fine-grained roles and container vulnerability scanning are outside the verified scope. The API uses JWT rather than server-side authentication cookies; local Data Protection keys are not persisted.
 
-CI/CD and final delivery validation remain pending.
-
-## Documentation
+## Additional documentation
 
 - [Functional specification](docs/SPEC.md)
 - [Architecture and technical decisions](docs/ARCHITECTURE.md)
-- [AI usage and review log](docs/AI_USAGE.md)
-
-## Security and limitations
-
-- Local credentials and environment files must not be committed.
-- HTTP metadata and trusted SQL Server certificates are allowed only for controlled local development.
-- Keycloak development mode, demonstration credentials, embedded database and bootstrap administrator are not production deployment configurations.
-- The local authorization model uses a shared API scope rather than fine-grained business roles.
-- Inventory consistency depends on business writes following the transactional persistence protocol.
-- Automatic retries after an uncertain transaction commit are not implemented.
-- Request idempotency is outside the current scope.
-- Count and page retrieval do not guarantee snapshot consistency under concurrent writes.
-- OpenAPI schema constraints may not express every normalized-input validation rule; the functional specification and server-side validation remain authoritative.
-- ASP.NET Core Data Protection keys are not persisted or additionally encrypted in the local API container. Current JWT authentication does not depend on server-side authentication cookies.
-- SQL Server CU28 has a verified local shutdown limitation documented above.
-- Container image vulnerability scanning has not been completed.
-- Docker images and development credentials are intended for controlled local evaluation, not production deployment.
-- CI/CD and final delivery validation remain pending.
+- [AI usage, prompts and review evidence](docs/AI_USAGE.md)
+- [Professional decision-making](docs/DECISIONS.md)

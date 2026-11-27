@@ -12,6 +12,7 @@
   <Folder Name="/Solution Items/docs/">
     <File Path="docs/AI_USAGE.md" />
     <File Path="docs/ARCHITECTURE.md" />
+    <File Path="docs/DECISIONS.md" />
     <File Path="docs/SPEC.md" />
   </Folder>
   <Folder Name="/src/">

@@ -1,6 +1,6 @@
 # AI Usage Log
 
-Status: Updated through local Application and dependency composition validation, Phase 6. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
+Status: Updated through local REST API, OAuth2, Swagger and host integration validation, Phase 7. Do not represent proposed decisions as implemented or verified. This log is a retrospective summary of the development conversation, not an independently timestamped transcript or test-run archive.
 
 ## Session 1 — Assessment review and specification (2026-11-23)
 Tool: ChatGPT.
@@ -421,8 +421,287 @@ The composition tests verify resolution and lifetimes of registered services wit
 
 Phase 6 results are based on candidate-executed local tests, explicit confirmations and supplied coverage output.
 
-The assistant has not independently executed these tests or reviewed the unpublished Phase 6 commit.
+The assistant did not independently execute these tests. The Phase 6 implementation was subsequently statically reviewed on GitHub after publication of commit cc6b32f7c57db6793b86584f04f11ba62acb030b.
 
 Program.cs integration, HTTP endpoints, centralized error responses, OAuth2, complete Docker Compose deployment, API integration tests and CI/CD remain pending.
 
 The candidate's professional decision-making answers remain a separate submission requirement and must reflect actual experience.
+
+## Session 7 — REST API, OAuth2, Swagger and integration verification
+
+Date: 2026-11-27.
+
+Tool: ChatGPT.
+
+### Main prompts and collaboration
+
+The candidate requested continuation into the REST API and security implementation phase.
+
+The assistant proposed HTTP contracts, controller implementations, error handling, OAuth2 configuration, Swagger integration and test scenarios.
+
+The candidate implemented the files locally in Visual Studio, configured Docker services and Keycloak, executed PowerShell commands and performed manual functional checks.
+
+Actual candidate confirmations included:
+
+- "Te confimo que todo salio como mencionaste en swagger y tambien todos los tests pasaron"
+- "Listo. Ya hice estas pruebas como mencionaste y todo salio bien"
+- "Confírmo las 13 pruebas nuevas exitosas y las 513 pruebas de regresión sin errores ni advertencias."
+
+The candidate subsequently supplied terminal output confirming 530 successful regression tests and the final Cobertura XML report.
+
+### Specification-first development
+
+HTTP endpoints were derived from the previously approved SPEC.md v0.3 and architecture baseline.
+
+The implementation retained the agreed eleven business operations, HTTP status codes, validation rules, authentication requirements and inventory consistency guarantees.
+
+No additional business endpoints were introduced.
+
+Request contracts and expected HTTP behavior were defined before controller implementation.
+
+Filtered failing tests preceded the implementation of the initial error handling and controller functionality.
+
+### AI proposals and implementation decisions
+
+| Proposal | Outcome and rationale |
+|---|---|
+| Separate HTTP request DTOs | Implemented to avoid exposing domain mutation through public request contracts. |
+| Reject unmapped JSON members | Implemented to prevent unsupported fields, including direct stock modification. |
+| Reuse application read models | Implemented to avoid unnecessary response mapping and duplicate models. |
+| Native IExceptionHandler | Implemented for centralized exception handling. |
+| Identifiable ProblemDetails codes | Implemented to provide consistent machine-readable errors without leaking internal details. |
+| Thin ASP.NET Core controllers | Implemented to preserve application and persistence boundaries. |
+| Keycloak as OAuth2 provider | Implemented and locally verified instead of creating a custom token-issuing service. |
+| Authorization Code with PKCE | Implemented for interactive Swagger authentication using a public client. |
+| Client Credentials | Implemented for machine-to-machine smoke verification. |
+| Exact issuer and audience validation | Implemented without weakening validation for local infrastructure. |
+| Shared authorization scope | Implemented for all current business endpoints. Fine-grained role-based authorization remains outside the current scope. |
+| Development-only Swagger | Implemented to avoid exposing interactive documentation in the Production environment. |
+| Controlled RSA signing keys in tests | Implemented to exercise JWT validation without requiring a live Keycloak instance for every automated test. |
+| WebApplicationFactory | Implemented to verify the actual API entry point and dependency composition. |
+| Real SQL persistence in full-host tests | Implemented using isolated Testcontainers instances rather than mocked repositories. |
+| Additional security configuration tests | Implemented after reviewing actual uncovered code paths. |
+| Artificial tests for complete coverage | Not pursued. Remaining coverage gaps were evaluated according to functional risk. |
+
+These rationales describe the proposed and implemented technical design. They must not be interpreted as independently stated personal reasoning from the candidate unless explicitly recorded.
+
+### TDD evidence
+
+The following filtered RED/GREEN executions were confirmed during the initial API implementation.
+
+| Component | RED passed | RED failed | GREEN passed | GREEN failed |
+|---|---:|---:|---:|---:|
+| GlobalExceptionHandler | 0 | 16 | 16 | 0 |
+| HTTP error responses | 2 | 12 | 14 | 0 |
+| CategoriesController | 0 | 25 | 25 | 0 |
+| ProductsController | 0 | 34 | 34 | 0 |
+| InventoryMovementsController | 0 | 25 | 25 | 0 |
+
+JWT and Swagger test scenarios were also defined before their corresponding complete implementations.
+
+The exact observed JWT RED count was not retained in the available verification evidence. Expected RED results are not presented as measured results.
+
+The full-host and complementary coverage tests were regression additions against existing functionality. They are not represented as additional artificial RED/GREEN cycles.
+
+### Corrections and limitations of AI-generated instructions
+
+#### Local configuration
+
+The local ASP.NET Core host initially lacked required SQL Server configuration because Docker Compose environment files are not automatically loaded by Visual Studio.
+
+The assistant proposed configuring local User Secrets instead of embedding credentials in launchSettings.json or version-controlled configuration.
+
+The candidate subsequently confirmed successful HTTPS startup in Visual Studio.
+
+#### Authentication composition
+
+An unauthenticated request initially returned HTTP 500 because JWT Bearer authentication and its middleware had not been incorporated into the actual Program.cs host.
+
+The issue was diagnosed using the exception handler and Visual Studio debugging.
+
+Program.cs was corrected to register and invoke authentication before authorization.
+
+Subsequent real requests returned the expected HTTP 401, 403 and 200 responses.
+
+The incident demonstrated that isolated controller and authentication tests do not independently guarantee correct production-host composition.
+
+Full-host integration tests were added to address this gap.
+
+#### Swagger client identification
+
+During manual verification, the distinction between the public OAuth2 client ID and the demonstration user account required clarification.
+
+The candidate was instructed to use inventory-swagger as the client ID and inventory-user for interactive authentication.
+
+Keycloak reused its existing SSO session during subsequent authorization.
+
+#### Token expiration
+
+A manual request returned HTTP 401 while an Authorization header was present.
+
+Token expiration was identified as the likely cause because access tokens have a five-minute lifetime.
+
+Swagger authorization renewal instructions were provided.
+
+The candidate subsequently confirmed successful completion of the manual functional workflow. The precise token expiration event was not independently established from token diagnostics.
+
+#### Coverage extraction
+
+The initial PowerShell XPath expression searched for lowercase branch="true".
+
+The actual Coverlet XML uses branch="True".
+
+The assistant identified and corrected the case-sensitive XPath mismatch. Coverage analysis was performed directly from the XML.
+
+#### Swagger UI regression test
+
+The first additional Swagger UI test searched for the configured OAuth2 client identifier in index.html.
+
+The candidate reported 12 passing tests and one failing test.
+
+The assistant identified that Swashbuckle 11.0.1 places the OAuth2 initialization configuration in the generated index.js resource.
+
+The test was corrected to inspect both index.html and index.js, including the client identifier, required scope and PKCE configuration.
+
+No production code change was required for this correction.
+
+The candidate subsequently confirmed the corrected tests and complete 530-case regression.
+
+### Actual Keycloak smoke verification
+
+The candidate executed requests using tokens issued by the locally running Keycloak instance.
+
+| Scenario | Expected status | Actual status |
+|---|---:|---:|
+| Missing access token | 401 | 401 |
+| Malformed token | 401 | 401 |
+| Tampered token signature | 401 | 401 |
+| Valid token without inventory.access | 403 | 403 |
+| Valid token with inventory.access | 200 | 200 |
+
+Swagger Authorization Code with PKCE was also manually verified.
+
+An authorized GET request succeeded, and removing Swagger authorization restored HTTP 401 behavior.
+
+These local smoke checks are separate from the automated test suite.
+
+### Manual functional and database verification
+
+The candidate confirmed successful completion of 26 functional HTTP checks and four SQL verification checks.
+
+The verification covered:
+
+- Category creation, retrieval, update and logical deletion.
+- Product creation, retrieval, update and logical deletion.
+- Case-insensitive duplicate rejection.
+- Missing category rejection.
+- Rejection of direct stock input.
+- Inventory entry and exit registration.
+- Insufficient stock rejection.
+- Invalid movement type and quantity rejection.
+- Preservation of stock during product updates.
+- Product and category deletion restrictions.
+- Rejection of movements for inactive products.
+- Persisted inactive categories and products.
+- Preservation of exactly three successful inventory movements.
+- Reconciliation of current stock with movement history.
+
+The confirmed movement sequence was an entry of 10 units, an exit of 4 units and an exit of 6 units.
+
+Final stock: zero.
+
+Rejected movements were not persisted.
+
+These results are candidate-reported manual verification, not additional automated test cases.
+
+### Automated test progression
+
+| Milestone | Total passing tests |
+|---|---:|
+| Phase 6 baseline | 355 |
+| HTTP error handling | 385 |
+| Category endpoints | 410 |
+| Product endpoints | 444 |
+| Inventory movement endpoint | 469 |
+| JWT authentication | 488 |
+| Swagger documentation | 500 |
+| Full API host integration | 513 |
+| Complementary security and Swagger tests | 530 |
+
+Phase 7 added 175 distinct automated test cases.
+
+### Final local verification
+
+Commands:
+
+```powershell
+dotnet build --configuration Release --no-incremental
+dotnet test --configuration Release --no-build
+
+dotnet test tests/InventoryManagement.IntegrationTests/InventoryManagement.IntegrationTests.csproj --configuration Release --no-build --collect:"XPlat Code Coverage"
+```
+
+The final supplied terminal output confirmed:
+
+| Metric | Result |
+|---|---:|
+| Domain unit tests | 95 passed |
+| Application unit tests | 142 passed |
+| Integration project tests | 293 passed |
+| Total tests | 530 passed |
+| Failed | 0 |
+| Skipped | 0 |
+| Complete regression duration | 83.9 seconds |
+| Coverage test execution | 293 passed |
+| Coverage test duration | 74.0 seconds |
+
+A preceding 513-case regression was explicitly confirmed without build errors or warnings.
+
+The final supplied output did not include the separate clean-build transcript. Therefore, its warning count is not independently established by that transcript.
+
+### Coverage improvement
+
+The initial Phase 7 integration coverage run included 276 passing tests.
+
+After reviewing uncovered configuration and security paths, 17 additional tests were introduced.
+
+| Component | Initial lines | Final lines | Initial branches | Final branches |
+|---|---:|---:|---:|---:|
+| API | 95.26% | 99.43% | 78.46% | 89.23% |
+| AuthenticationServiceRegistration | 94.36% | 100.00% | 50.00% | 100.00% |
+| SwaggerServiceRegistration | 71.87% | 100.00% | 50.00% | 100.00% |
+| Integration aggregate | 96.17% | 97.60% | 84.47% | 87.67% |
+
+Final measured integration coverage:
+
+| Assembly | Lines | Branches |
+|---|---:|---:|
+| API | 525/528 | 58/65 |
+| Application | 364/364 | 23/26 |
+| Domain | 141/163 | 24/32 |
+| Infrastructure | 476/488 | 87/96 |
+| Aggregate | 1506/1543 | 192/219 |
+
+All controller implementations and both authentication and Swagger registration classes reported complete instrumented line coverage.
+
+Three API lines remain uncovered: one Development-only host branch and two generic HTTP error mapping lines.
+
+These coverage results were obtained by inspecting the candidate-supplied Cobertura XML.
+
+They represent integration-test coverage, not merged coverage of all 530 automated tests.
+
+### Remaining limitations
+
+The assistant did not independently compile or execute the Phase 7 implementation.
+
+The reported results originate from candidate-executed local tests, explicit confirmations and supplied terminal and coverage output.
+
+The Phase 7 source changes remain subject to static review after publication.
+
+Automated JWT tests use controlled OpenID Connect metadata rather than querying the actual Keycloak instance.
+
+Actual OAuth2 communication was verified separately through local smoke tests.
+
+Complete API container deployment, clean Compose startup, container-network authentication, CI/CD and final OpenAPI contract review remain pending.
+
+The assessment's professional decision-making answers remain a separate requirement and must reflect actual candidate experiences.

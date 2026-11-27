@@ -39,5 +39,38 @@ services:
       - /database/init.sh
     restart: "no"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KC_BOOTSTRAP_ADMIN_PASSWORD:?KC_BOOTSTRAP_ADMIN_PASSWORD is required}"
+      KC_DB: dev-file
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_SCHEME: http
+      KC_HOSTNAME: "http://localhost:${KEYCLOAK_PORT:-8081}"
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HOSTNAME_STRICT: "true"
+      KEYCLOAK_SERVICE_CLIENT_SECRET: "${KEYCLOAK_SERVICE_CLIENT_SECRET:?KEYCLOAK_SERVICE_CLIENT_SECRET is required}"
+      KEYCLOAK_DEMO_USER_PASSWORD: "${KEYCLOAK_DEMO_USER_PASSWORD:?KEYCLOAK_DEMO_USER_PASSWORD is required}"
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./infrastructure/keycloak/inventory-realm.json:/opt/keycloak/data/import/inventory-realm.json:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c "{ printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&0;
+          grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000"
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
 volumes:
   sqlserver-data:
+  keycloak-data:

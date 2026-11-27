@@ -1,6 +1,6 @@
 # Inventory Management API — Architecture
 
-Status: Candidate-approved architecture baseline v0.2, with domain update v0.3, persistence implementation update v0.4 and application implementation update v0.5. Implementation in progress.
+Status: Candidate-approved architecture baseline v0.2, with domain update v0.3, persistence implementation update v0.4, application implementation update v0.5 and REST API and security implementation update v0.6. Full container deployment and CI/CD remain pending.
 Functional baseline: SPEC.md v0.3 (candidate-approved scope; architecture references updated).
 
 ## ADR-001 — Runtime and architecture
@@ -176,7 +176,7 @@ AddInventoryPersistence centralizes persistence dependency registration.
 
 ApplicationServiceRegistration and AddInventoryPersistence have been verified together through dependency composition tests.
 
-The final Program.cs integration remains pending until Phase 7.
+Program.cs integration was completed and locally verified during Phase 7.
 
 The local .env file is not automatically loaded by ASP.NET Core. Docker Compose and local API debugging must provide the required configuration explicitly.
 
@@ -222,9 +222,9 @@ Application organizes use cases by functional module: Categories, Products and I
 
 Use explicit typed contracts:
 
-- IQueryHandler<TQuery, TResult>
-- ICommandHandler<TCommand, TResult>
-- ICommandHandler<TCommand>
+- `IQueryHandler<TQuery, TResult>`
+- `ICommandHandler<TCommand, TResult>`
+- `ICommandHandler<TCommand>`
 
 Queries return read models or paginated results.
 
@@ -324,7 +324,177 @@ Twenty-two composition test cases verify implementation types, registration uniq
 
 Composition tests do not open SQL Server connections.
 
-Program.cs registration, actual HTTP request processing and host-level validation remain pending for Phase 7.
+Program.cs registration, actual HTTP request processing and host-level validation were completed during Phase 7. See ADR-021 and ADR-025.
+
+## ADR-021 — REST API and host composition
+
+Status: Implemented and locally verified during Phase 7.
+
+ASP.NET Core controllers expose eleven business endpoints under /api/v1.
+
+Controllers receive typed application handlers through constructor injection. They do not access SQL Server, EF Core or Dapper directly.
+
+HTTP request contracts are separate from domain entities and application commands.
+
+Request DTOs reject unmapped JSON members to prevent clients from supplying unsupported properties, including stock and active state.
+
+Application read models are reused as response contracts.
+
+Category and product creation return HTTP 201 with a generated identifier and a Location header.
+
+Inventory movement registration returns HTTP 201 with the generated identifier and no Location header.
+
+Updates and logical deletions return HTTP 204 without a response body.
+
+Movement type parsing accepts Entry and Exit using exact case-sensitive string matching.
+
+Program.cs is the composition root and registers controllers, Application, Infrastructure, error handling, Swagger and authentication services.
+
+The request pipeline invokes authentication before authorization.
+
+## ADR-022 — Centralized HTTP error handling
+
+Status: Implemented and locally verified.
+
+Use the native ASP.NET Core IExceptionHandler abstraction.
+
+GlobalExceptionHandler delegates exception translation to ExceptionProblemDetailsMapper.
+
+Application validation failures become HTTP 400 responses with field-level validation errors.
+
+Known missing-resource exceptions become HTTP 404.
+
+Known uniqueness and business-rule conflicts become HTTP 409.
+
+Unexpected exceptions become HTTP 500 with a generic public message.
+
+Invalid model binding and otherwise empty HTTP error responses are handled separately through HttpErrorResponses.
+
+Error responses include a stable application code, trace identifier and request path.
+
+The application does not expose internal exception messages, SQL details or stack traces to consumers.
+
+Expected business failures do not require the same diagnostic treatment as unexpected server failures.
+
+## ADR-023 — OAuth2 resource server and Keycloak
+
+Status: Implemented and verified against local Keycloak. Complete container networking verification remains pending.
+
+Use Keycloak 26.8.2 as the OAuth2 authorization server.
+
+Realm: inventory.
+
+Clients:
+
+- inventory-api: resource-server audience.
+- inventory-swagger: public Authorization Code client with mandatory PKCE S256.
+- inventory-service: confidential Client Credentials client.
+
+The API requires the inventory.access scope for every business endpoint.
+
+JWT Bearer validates the token signature, RS256 algorithm, exact issuer, audience, expiration and validity period.
+
+Audience validation does not ignore trailing slash differences.
+
+Scope comparison is case-sensitive and matches complete space-delimited scope values.
+
+The access token lifetime is 300 seconds. JWT validation uses a 30-second clock skew.
+
+The API uses separate KEYCLOAK_AUTHORITY and KEYCLOAK_ISSUER settings to support different metadata and public issuer addresses without relaxing issuer validation.
+
+HTTP metadata is accepted only in Development.
+
+Required configuration values and invalid authentication URLs are rejected during service registration.
+
+The local Keycloak instance uses development mode and an embedded database. Its named volume preserves realm data across container recreation.
+
+Existing imported realms are not overwritten automatically.
+
+Bootstrap administration, demonstration users and HTTP endpoints are restricted to the local evaluation environment.
+
+Production deployment requires HTTPS, production identity-provider configuration, appropriate administrator provisioning and credential management.
+
+The current shared scope is not a fine-grained role-based authorization system.
+
+## ADR-024 — OpenAPI and interactive authorization
+
+Status: Implemented and locally verified.
+
+Use Swashbuckle.AspNetCore 11.0.1.
+
+OpenAPI describes the Authorization Code flow and required inventory.access scope.
+
+A global security requirement is appropriate because all current business endpoints use the same authorization policy.
+
+Swagger UI uses the public inventory-swagger client and enables PKCE.
+
+No confidential client secret is provided to Swagger UI.
+
+Swagger authorization is not persisted across page reloads by an application-specific persistence configuration.
+
+Swagger UI and the OpenAPI endpoint are exposed only in Development.
+
+Controller metadata describes applicable successful responses and ProblemDetails errors, including HTTP 401, 403 and 500.
+
+Swagger UI initialization tests inspect both the HTML document and its generated index.js script.
+
+The OpenAPI document does not replace server-side validation or authorization.
+
+Additional schema metadata could improve client generation and communicate normalized-input restrictions more precisely.
+
+## ADR-025 — API integration testing and quality baseline
+
+Status: Locally verified on 2026-11-27.
+
+Testing is organized into complementary levels:
+
+- Domain unit tests.
+- Application unit tests with real validators and mocked persistence ports.
+- SQL Server integration tests using Testcontainers.
+- Dependency composition tests.
+- HTTP controller tests using isolated TestServer hosts.
+- JWT authentication and authorization tests using controlled RSA keys.
+- OpenAPI and Swagger UI documentation tests.
+- Complete API host integration tests using WebApplicationFactory.
+- Manual smoke checks against actual Keycloak.
+- Manual functional verification through Swagger and SQL Server.
+
+Complete-host integration tests execute the actual API entry point in Production.
+
+They use real application services and persistence implementations with isolated SQL Server instances.
+
+Only configuration and OpenID Connect metadata are controlled by the test infrastructure. JWT validation and authorization policies remain active.
+
+The local Keycloak authentication flow is verified separately rather than starting an identity-provider container for every automated test.
+
+Local final regression:
+
+- Domain.Tests: 95 passed.
+- Application.Tests: 142 passed.
+- IntegrationTests: 293 passed.
+- Total: 530 passed.
+- Failed: 0.
+- Skipped: 0.
+
+The final integration coverage run reported:
+
+| Assembly | Line coverage | Branch coverage |
+|---|---:|---:|
+| API | 99.43% | 89.23% |
+| Application | 100.00% | 88.46% |
+| Domain | 86.50% | 75.00% |
+| Infrastructure | 97.54% | 90.62% |
+| Aggregate | 97.60% | 87.67% |
+
+The coverage report represents 293 integration tests, not merged coverage of the complete test suite.
+
+The three uncovered API lines concern the Development-only host branch and generic HTTP error mapping.
+
+The Development-only Swagger path was manually exercised through Visual Studio, and Swagger service configuration was verified through isolated automated tests.
+
+Additional tests were not introduced solely to achieve 100% coverage.
+
+The candidate executed the tests locally. The assistant inspected the supplied terminal output and Cobertura XML without independently executing the code.
 
 ## Repository layout
 
@@ -332,13 +502,9 @@ Program.cs registration, actual HTTP request processing and host-level validatio
 - src/InventoryManagement.Application
   - Abstractions/Messaging
   - Abstractions/Persistence
-  - Categories/Commands
-  - Categories/Queries
-  - Categories/Validation
-  - Products/Commands
-  - Products/Queries
-  - Products/Validation
-  - InventoryMovements/Commands
+  - Categories
+  - Products
+  - InventoryMovements
   - Validation
   - Models
   - Exceptions
@@ -351,62 +517,59 @@ Program.cs registration, actual HTTP request processing and host-level validatio
   - Persistence/Repositories/Write
 - src/InventoryManagement.Api
   - Configuration
+  - Contracts
+  - Controllers
+  - ErrorHandling
 - tests/InventoryManagement.Domain.Tests
 - tests/InventoryManagement.Application.Tests
-  - Categories
-  - Products
-  - InventoryMovements
 - tests/InventoryManagement.IntegrationTests
   - Composition
+  - ErrorHandling
   - Fixtures
   - Persistence
+  - Http/Authentication
+  - Http/Categories
+  - Http/Products
+  - Http/InventoryMovements
+  - Http/Documentation
+  - Http/EndToEnd
 - database/scripts
 - database/init.sh
+- infrastructure/keycloak/inventory-realm.json
 - docs/
 
 Root configuration includes .env.example, .gitignore, .gitattributes, docker-compose.yml, README.md and central SDK/build/package settings.
 
 Planned additions:
 
-- API controllers and HTTP request contracts.
-- Centralized exception handling and ProblemDetails mapping.
-- OAuth2 authentication and authorization configuration.
-- infrastructure/keycloak/ realm configuration.
-- docs/DECISIONS.md with candidate decision-making answers.
-- .github/workflows/ci.yml.
-- API Dockerfile.
-- Complete API and Keycloak Docker Compose services.
+- API Dockerfile and Docker build exclusions.
+- Complete API service configuration in Docker Compose.
+- GitHub Actions workflow.
+- Candidate decision-making answers in docs/DECISIONS.md.
 
 ## Pending validation
 
-The Phase 4 domain commit was statically reviewed on GitHub after publication.
+The Phase 4 domain and Phase 5 persistence commits were statically reviewed on GitHub.
 
-The Phase 5 persistence commit (3c553e35e5e32848c8bb17915089a82b4ad0e777) was statically reviewed on GitHub following local verification.
+The Phase 6 application implementation was statically reviewed after publication of commit cc6b32f7c57db6793b86584f04f11ba62acb030b.
 
-Phase 6 introduced eleven application use cases, input validation and dependency composition.
+Phase 7 introduced REST endpoints, centralized error handling, OAuth2, Swagger and complete-host integration tests.
 
-Candidate-reported Phase 6 results:
+The candidate reported successful local execution of all 530 automated tests.
 
-- 95 Domain unit test cases passed.
-- 142 Application unit test cases passed.
-- 96 persistence integration test cases passed.
-- 22 dependency composition test cases passed.
-- 355 total test cases passed.
-- Zero failures, skipped tests and reported build warnings.
-- Application line coverage: 96.70%.
-- Application branch coverage: 88.46%.
+Manual verification covered CRUD operations, inventory entries and exits, logical deletion, persisted movement history and stock reconciliation.
 
-Phase 6 remote code review remains pending until its commit is published.
+The Phase 7 source changes remain subject to static review after publication of the corresponding commit.
 
-Remaining work includes:
+Remaining work:
 
-- HTTP controllers and ProblemDetails error mapping.
-- Program.cs dependency integration.
-- OAuth2 authentication and authorization.
-- Full Docker Compose deployment and clean-start verification.
-- API-level integration tests.
+- API container image and full Docker Compose deployment.
+- Clean-start verification and service startup ordering.
+- Container-to-Keycloak metadata and signing-key retrieval.
+- Complete containerized authentication smoke checks.
+- Final OpenAPI contract review.
 - CI/CD.
 - Candidate decision-making answers.
-- Final submission documentation.
+- Final deployment and delivery documentation.
 
-Existing unit, persistence and composition tests do not establish complete API or system-wide correctness.
+The measured test coverage and successful local checks do not establish complete production readiness.
